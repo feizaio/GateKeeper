@@ -39,13 +39,6 @@ def login():
     else:
         return jsonify({'error': 'Invalid credentials'}), 401
 
-@users_bp.route('/logout', methods=['POST'])
-def logout():
-    """用户注销"""
-    session.pop('user_id', None)  # 清除 session
-    g.current_user = None  # 清除 g.current_user
-    return jsonify({'message': 'Logout successful'})
-
 @users_bp.route('/users', methods=['GET'])
 @admin_required
 def get_users():

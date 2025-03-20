@@ -9,6 +9,11 @@
             </el-tooltip>
           </div>
           <span class="header-title">堡垒机管理系统</span>
+          <!-- 添加注销按钮 -->
+          <el-button type="text" class="logout-button" @click="handleLogout">
+            <i class="el-icon-switch-button"></i>
+            注销
+          </el-button>
         </div>
       </el-header>
       
@@ -25,7 +30,6 @@
               <span>服务器管理</span>
             </el-menu-item>
             
-
             <el-submenu index="2">
               <template slot="title">
                 <i class="el-icon-setting"></i>
@@ -81,10 +85,40 @@ export default {
     statusText() {
       if (this.checkingStatus) return '正在检查客户端状态...';
       return this.clientConnected ? '客户端已连接' : '客户端未连接';
+    },
+    isLoggedIn() {
+      return this.$store.state.user !== null;
     }
   },
   methods: {
+    async handleLogout() {
+      try {
+        // 调用注销接口
+        await axios.post('/api/auth/logout');
+        // 清除本地存储的 token 和用户信息
+        localStorage.removeItem('token');
+        this.$store.commit('SET_USER', null);
+        // 停止状态检查
+        this.stopStatusCheck();
+        // 重置状态
+        this.clientConnected = false;
+        this.checkingStatus = false;
+        this.showClientDialog = false;
+        // 跳转到登录页面
+        this.$router.push('/login');
+        this.$message.success('注销成功');
+      } catch (error) {
+        console.error('注销失败:', error);
+        const errorMessage = error.response && error.response.data && error.response.data.error || error.message;
+        this.$message.error('注销失败: ' + errorMessage);
+      }
+    },
     async checkClientStatus() {
+      // 如果未登录，不执行检查
+      if (!this.isLoggedIn) {
+        return;
+      }
+      
       try {
         this.checkingStatus = true;
         const response = await axios.get('/api/client/status');
@@ -115,6 +149,14 @@ export default {
       this.showClientDialog = false;
     },
     startStatusCheck() {
+      // 如果未登录，不启动检查
+      if (!this.isLoggedIn) {
+        return;
+      }
+      
+      // 如果已经有定时器在运行，先清除它
+      this.stopStatusCheck();
+      
       // 更频繁地检查状态（每10秒一次）
       this.statusCheckInterval = setInterval(() => {
         this.checkClientStatus();
@@ -122,15 +164,32 @@ export default {
       
       // 立即执行一次检查
       this.checkClientStatus();
+    },
+    stopStatusCheck() {
+      if (this.statusCheckInterval) {
+        clearInterval(this.statusCheckInterval);
+        this.statusCheckInterval = null;
+      }
+    }
+  },
+  watch: {
+    // 监听登录状态变化
+    isLoggedIn(newValue) {
+      if (newValue) {
+        this.startStatusCheck();
+      } else {
+        this.stopStatusCheck();
+      }
     }
   },
   mounted() {
-    this.startStatusCheck();
+    // 只在登录状态下启动检查
+    if (this.isLoggedIn) {
+      this.startStatusCheck();
+    }
   },
   beforeDestroy() {
-    if (this.statusCheckInterval) {
-      clearInterval(this.statusCheckInterval);
-    }
+    this.stopStatusCheck();
   }
 }
 </script>
@@ -200,4 +259,9 @@ export default {
   color: #303133;
   font-size: 18px;
 }
-</style> 
+
+.logout-button {
+  margin-left: auto;
+  color: #F56C6C;
+}
+</style>

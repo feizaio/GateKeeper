@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from backend.models.user import User
 from backend import db
 from werkzeug.security import check_password_hash
@@ -32,7 +32,9 @@ def login():
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
-    session.pop('user_id', None)
+    """用户注销"""
+    session.pop('user_id', None)  # 清除 session
+    g.current_user = None  # 清除 g.current_user
     return jsonify({'message': 'Logged out successfully'})
 
 @auth_bp.route('/check', methods=['GET'])

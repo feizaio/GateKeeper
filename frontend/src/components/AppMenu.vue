@@ -13,14 +13,16 @@
       <i class="el-icon-user"></i>
       <span>用户管理</span>
     </el-menu-item>
-    <el-menu-item index="/settings">
-      <i class="el-icon-setting"></i>
-      <span>系统设置</span>
+    <!-- 添加注销按钮 -->
+    <el-menu-item index="logout" @click="handleLogout">
+      <i class="el-icon-switch-button"></i>
+      <span>注销</span>
     </el-menu-item>
   </el-menu>
 </template>
-
 <script>
+import axios from 'axios';
+
 export default {
   data() {
     return {
@@ -30,7 +32,27 @@ export default {
   },
   methods: {
     handleSelect(index) {
-      this.$router.push(index); // 跳转到对应路由
+      if (index === 'logout') {
+        this.handleLogout();
+      } else {
+        this.$router.push(index); // 跳转到对应路由
+      }
+    },
+    async handleLogout() {
+      try {
+        // 调用注销接口
+        await axios.post('/api/auth/logout');
+        // 清除本地存储的 token 和用户信息
+        localStorage.removeItem('token');
+        this.$store.commit('SET_USER', null);
+        // 跳转到登录页面
+        this.$router.push('/login');
+        this.$message.success('注销成功');
+      } catch (error) {
+        console.error('注销失败:', error);
+        const errorMessage = error.response && error.response.data && error.response.data.error || error.message;
+        this.$message.error('注销失败: ' + errorMessage);
+      }
     }
   }
 };
