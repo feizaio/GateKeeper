@@ -142,7 +142,7 @@ def get_user_servers(user_id):
         'ip': server.ip,
         'type': server.type,
         'username': server.username
-    } for server in user.servers])
+    } for server in user.managed_servers])
 
 @users_bp.route('/users/<int:user_id>/servers', methods=['POST'])
 @admin_required
@@ -153,7 +153,7 @@ def update_user_servers(user_id):
     server_ids = data.get('server_ids', [])
     
     # 更新用户的服务器列表
-    user.servers = Server.query.filter(Server.id.in_(server_ids)).all()
+    user.managed_servers = Server.query.filter(Server.id.in_(server_ids)).all()
     db.session.commit()
     
     return jsonify({'message': 'User servers updated successfully'})
