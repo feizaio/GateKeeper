@@ -33,7 +33,13 @@ def get_servers():
     """获取服务器列表"""
     try:
         logging.info("获取服务器列表")
-        servers = Server.query.all()  # 获取所有服务器
+        
+        # 根据用户权限获取服务器列表
+        if g.current_user.is_admin:
+            servers = Server.query.all()  # 管理员可以看到所有服务器
+        else:
+            servers = g.current_user.managed_servers.all()  # 普通用户只能看到分配给他们的服务器
+            
         return jsonify([{
             'id': server.id,
             'name': server.name,
@@ -42,11 +48,12 @@ def get_servers():
             'username': server.username,
             'in_use': bool(server.in_use_by),
             'last_active': server.last_active.isoformat() if server.last_active else None,
-            'credentials': [{
-                'id': cred.id,
-                'username': cred.username,
-                'create_time': cred.create_time.isoformat()
-            } for cred in server.credentials]
+            'in_use_by_me': server.in_use_by == g.current_user.id,
+            'in_use_by_username': (
+                '我' if server.in_use_by == g.current_user.id 
+                else (User.query.get(server.in_use_by).username if server.in_use_by 
+                else None)
+            )
         } for server in servers])
     except Exception as e:
         logging.error(f"获取服务器列表失败: {str(e)}")
