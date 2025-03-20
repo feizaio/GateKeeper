@@ -54,7 +54,7 @@ def get_servers():
     if user.is_admin:
         servers = Server.query.all()
     else:
-        servers = user.servers
+        servers = user.managed_servers.all()
         
     return jsonify([{
         'id': server.id,
@@ -66,7 +66,7 @@ def get_servers():
         'in_use_by_me': server.in_use_by == user.id,
         'in_use_by_username': (
             '我' if server.in_use_by == user.id 
-            else (server.current_user.username if server.in_use_by 
+            else (User.query.get(server.in_use_by).username if server.in_use_by 
             else None)
         )
     } for server in servers])
@@ -78,7 +78,7 @@ def update_server_status(server_id):
     server = Server.query.get_or_404(server_id)
     
     # 检查用户是否有权限访问此服务器
-    if not user.is_admin and server not in user.servers:
+    if not user.is_admin and server not in user.managed_servers:
         return jsonify({'error': 'Access denied'}), 403
     
     data = request.get_json()
@@ -87,9 +87,10 @@ def update_server_status(server_id):
     if action == 'connect':
         # 如果服务器已被其他用户使用
         if server.in_use_by and server.in_use_by != user.id:
+            in_use_by_user = User.query.get(server.in_use_by)
             return jsonify({
                 'error': 'Server is in use',
-                'in_use_by': server.current_user.username
+                'in_use_by': in_use_by_user.username if in_use_by_user else 'Unknown user'
             }), 409
         server.in_use_by = user.id
         server.last_active = datetime.now()
@@ -111,12 +112,13 @@ def get_server_password(server_id):
     server = Server.query.get_or_404(server_id)
     
     # 检查用户是否有权限访问此服务器
-    if not user.is_admin and server not in user.servers:
+    if not user.is_admin and server not in user.managed_servers:
         return jsonify({'error': 'Access denied'}), 403
         
     # 检查服务器是否被其他用户使用
     if server.in_use_by and server.in_use_by != user.id:
-        return jsonify({'error': f'Server is in use by {server.current_user.username}'}), 409
+        in_use_by_user = User.query.get(server.in_use_by)
+        return jsonify({'error': f'Server is in use by {in_use_by_user.username if in_use_by_user else "Unknown user"}'}), 409
         
     password = server.get_password()
     if password is None:
