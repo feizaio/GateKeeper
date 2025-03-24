@@ -4,6 +4,7 @@ import UserManagement from '../components/UserManagement.vue'
 import Login from '../components/Login.vue'
 import Layout from '../components/Layout.vue'
 import ServerList from '../components/ServerList.vue'
+import CategoryManagement from '../components/CategoryManagement.vue'
 import store from '../store'
 
 Vue.use(VueRouter)
@@ -14,6 +15,7 @@ const routes = [
     name: 'Login',
     component: Login
   },
+
   {
     path: '/',
     component: Layout,
@@ -27,7 +29,14 @@ const routes = [
       {
         path: 'users',
         name: 'UserManagement',
-        component: UserManagement
+        component: UserManagement,
+        meta: { requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'system/categories',
+        name: 'CategoryManagement',
+        component: CategoryManagement,
+        meta: { requiresAuth: true, requiresAdmin: true }
       }
     ]
   }
@@ -41,13 +50,22 @@ const router = new VueRouter({
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token');
-  if (!token && to.path !== '/login') {
-    next('/login');  // 如果没有 token 且目标路径不是登录页面，则跳转到登录页面
+  const isAuthenticated = localStorage.getItem('token')
+  const user = store.state.user
+  const isAdmin = user && user.is_admin
+
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    if (!isAuthenticated) {
+      next('/login')
+    } else if (to.matched.some(record => record.meta.requiresAdmin) && !isAdmin) {
+      next('/')
+    } else {
+      next()
+    }
   } else {
-    next();  // 放行
+    next()
   }
-});
+})
 
 
 export default router

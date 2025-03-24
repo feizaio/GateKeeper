@@ -28,6 +28,7 @@ class ServerMonitor:
         while self.running:
             try:
                 with self.app.app_context():
+                    # 使用 Server.query.all() 获取完整的 Server 对象
                     servers = Server.query.all()
                     for server in servers:
                         # 只检查通过堡垒机登录的用户连接
@@ -40,12 +41,12 @@ class ServerMonitor:
                                 server.in_use_by = None
                                 server.last_active = None
                                 db.session.commit()
-                            elif (datetime.now() - server.last_active).total_seconds() > 900:  # 15分钟
+                            elif server.last_active and (datetime.now() - server.last_active).total_seconds() > 900:  # 15分钟
                                 # 如果超过15分钟没有心跳，释放服务器
                                 server.in_use_by = None
                                 server.last_active = None
                                 db.session.commit()
-                    
+                
             except Exception as e:
                 print(f"Monitor error: {e}")
                 

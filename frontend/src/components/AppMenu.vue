@@ -13,6 +13,10 @@
       <i class="el-icon-user"></i>
       <span>用户管理</span>
     </el-menu-item>
+    <el-menu-item index="/system/categories" v-if="isAdmin">
+      <i class="el-icon-collection-tag"></i>
+      <span>分类管理</span>
+    </el-menu-item>
     <!-- 添加注销按钮 -->
     <el-menu-item index="logout" @click="handleLogout">
       <i class="el-icon-switch-button"></i>
@@ -29,6 +33,11 @@ export default {
       activeIndex: this.$route.path, // 根据当前路由设置默认选中项
       isCollapse: false // 控制菜单是否折叠
     };
+  },
+  computed: {
+    isAdmin() {
+      return this.$store.state.user && this.$store.state.user.is_admin;
+    }
   },
   methods: {
     handleSelect(index) {

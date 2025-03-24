@@ -7,6 +7,8 @@ import os
 import time
 import psutil
 import logging
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import inspect
 
 # 将项目根目录添加到 sys.path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -15,6 +17,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 from backend.extensions import db, socketio
 from backend.utils.monitor import ServerMonitor
 from backend.routes.auth import auth_bp  # 导入 auth_bp
+from backend.database import init_db, db_session
+
+# 从配置文件导入数据库 URI
+from backend.config import DATABASE_URI
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,18 +29,21 @@ logging.basicConfig(
 
 def create_app():
     app = Flask(__name__)
-    CORS(app)
+    CORS(app, supports_credentials=True)
     
-    # 使用绝对路径
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fortress.db')
-    key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'encryption.key')
+    # 从配置文件导入数据库 URI
+    from backend.config import DATABASE_URI
     
-    # 如果数据库文件不存在，则创建新的数据库
-    need_init_db = not os.path.exists(db_path)
-    
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    # 设置数据库配置
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_recycle': 3600,
+        'pool_pre_ping': True
+    }
     app.config['SECRET_KEY'] = 'your-secret-key'
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False
 
     # 初始化扩展
     db.init_app(app)
@@ -48,30 +57,42 @@ def create_app():
     from backend.routes.remote import remote_bp
     from backend.routes.users import users_bp
     from backend.routes.agent import agent_bp
+    from backend.routes.category import category_bp
+    from backend.routes.server import server_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(servers_bp, url_prefix='/api')
     app.register_blueprint(remote_bp, url_prefix='/api')
     app.register_blueprint(users_bp, url_prefix='/api')
     app.register_blueprint(agent_bp, url_prefix='/api')
+    app.register_blueprint(category_bp, url_prefix='/api/categories')
+    app.register_blueprint(server_bp, url_prefix='/api/servers')
 
     # 注册 before_request 钩子
     #app.before_request(auth_bp.before_request)
 
     # 创建数据库表
     with app.app_context():
-        if need_init_db:
-            db.create_all()
-            # 创建初始管理员账号
-            admin = User.query.filter_by(username='admin').first()
-            if not admin:
-                admin = User(username='admin', is_admin=True)
-                admin.set_password('admin')
-                db.session.add(admin)
-                db.session.commit()
+        # 只创建不存在的表，不删除现有表
+        db.create_all()
+        
+        # 创建初始管理员账号（如果不存在）
+        admin = User.query.filter_by(username='admin').first()
+        if not admin:
+            admin = User(username='admin', is_admin=True)
+            admin.set_password('admin')
+            db.session.add(admin)
+            db.session.commit()
 
     # 初始化客户端连接存储
     app.connected_clients = {}
+
+    # 初始化数据库
+    init_db()
+
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        db_session.remove()
 
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')

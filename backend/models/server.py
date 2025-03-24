@@ -18,6 +18,7 @@ class Server(db.Model):
     password = db.Column(db.String(500), nullable=False)
     in_use_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     last_active = db.Column(db.DateTime, nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
     
     # 管理此服务器的用户 - 多对多
     managers = db.relationship(
@@ -26,6 +27,9 @@ class Server(db.Model):
         lazy='dynamic',
         overlaps="managed_servers"
     )
+    
+    # 服务器所属分类
+    category = db.relationship('Category', back_populates='servers')
     
     def set_password(self, password):
         """设置加密密码"""

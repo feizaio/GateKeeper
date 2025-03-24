@@ -46,6 +46,8 @@ def get_servers():
             'ip': server.ip,
             'type': server.type,
             'username': server.username,
+            'category_id': server.category_id,  # 添加分类ID
+            'category_name': server.category.name if server.category else None,  # 添加分类名称
             'in_use': bool(server.in_use_by),
             'last_active': server.last_active.isoformat() if server.last_active else None,
             'in_use_by_me': server.in_use_by == g.current_user.id,
@@ -71,7 +73,8 @@ def add_server():
             name=data['name'],
             ip=data['ip'],
             type=data['type'],
-            username=data['username']
+            username=data['username'],
+            category_id=data.get('category_id')  # 添加分类ID
         )
         server.set_password(data['password'])
         
@@ -82,7 +85,9 @@ def add_server():
             'id': server.id,
             'name': server.name,
             'ip': server.ip,
-            'type': server.type
+            'type': server.type,
+            'category_id': server.category_id,
+            'category_name': server.category.name if server.category else None
         })
     except Exception as e:
         logging.error(f"添加服务器失败: {str(e)}")
@@ -108,31 +113,55 @@ def delete_server(server_id):
         return jsonify({'error': str(e)}), 500
 
 @server_bp.route('/<int:server_id>', methods=['PUT'])
+@login_required
 def update_server(server_id):
     """更新服务器信息"""
     try:
+        logging.info(f"开始更新服务器 ID: {server_id}")
         server = Server.query.get_or_404(server_id)
         data = request.get_json()
+        logging.info(f"更新数据: {data}")
         
-        if 'name' in data:
-            server.name = data['name']
-        if 'ip' in data:
-            server.ip = data['ip']
-        if 'type' in data:
-            server.type = data['type']
-        if 'username' in data:
-            server.username = data['username']
-        if 'password' in data:
-            server.set_password(data['password'])
+        # 检查是否有权限更新
+        if not g.current_user.is_admin:
+            logging.warning(f"用户 {g.current_user.username} 尝试更新服务器但没有管理员权限")
+            return jsonify({'error': '没有权限更新服务器信息'}), 403
             
-        db.session.commit()
+        # 验证必需字段
+        required_fields = ['name', 'ip', 'type', 'username']
+        for field in required_fields:
+            if field not in data:
+                logging.error(f"缺少必需字段: {field}")
+                return jsonify({'error': f'缺少必需字段: {field}'}), 400
         
-        return jsonify({
-            'id': server.id,
-            'name': server.name,
-            'ip': server.ip,
-            'type': server.type
-        })
+        try:
+            # 更新服务器信息
+            server.name = data['name']
+            server.ip = data['ip']
+            server.type = data['type']
+            server.username = data['username']
+            
+            # 如果提供了新密码，则更新密码
+            if data.get('password'):
+                server.set_password(data['password'])
+            
+            db.session.commit()
+            logging.info(f"服务器 {server_id} 更新成功")
+            
+            return jsonify({
+                'id': server.id,
+                'name': server.name,
+                'ip': server.ip,
+                'type': server.type,
+                'username': server.username
+            })
+        except Exception as e:
+            logging.error(f"数据库更新失败: {str(e)}")
+            db.session.rollback()
+            return jsonify({'error': f'数据库更新失败: {str(e)}'}), 500
+            
     except Exception as e:
-        db.session.rollback()
+        logging.error(f"更新服务器失败: {str(e)}")
+        if 'server' in locals() and db.session.is_active:
+            db.session.rollback()
         return jsonify({'error': str(e)}), 500 

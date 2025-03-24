@@ -5,17 +5,17 @@ from .extensions import db
 from .models import server_users  # 导入关联表
 from .models.user import User
 from .models.server import Server
+from config import Config
 
 from .routes.server import server_bp
 from .routes.auth import auth_bp
 
 
-def create_app(config=None):
+def create_app(config_class=Config):
     app = Flask(__name__)
     
     # 配置数据库
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///fortress.db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config.from_object(config_class)
     app.config['SECRET_KEY'] = 'your-secret-key'  # 确保设置了 SECRET_KEY
     
     # 启用 CORS

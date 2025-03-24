@@ -62,6 +62,8 @@ def get_servers():
         'ip': server.ip,
         'type': server.type,
         'username': server.username,
+        'category_id': server.category_id,
+        'category_name': server.category.name if server.category else None,
         'in_use': bool(server.in_use_by),
         'in_use_by_me': server.in_use_by == user.id,
         'in_use_by_username': (
