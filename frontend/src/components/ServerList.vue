@@ -108,10 +108,13 @@
           </div>
           <div class="form-row">
             <el-form-item label="类型" prop="type" class="form-item">
-              <el-select v-model="serverForm.type" placeholder="请选择服务器类型" style="width: 100%">
+              <el-select v-model="serverForm.type" placeholder="请选择服务器类型" style="width: 100%" @change="updateDefaultPort">
                 <el-option label="Windows" value="Windows"></el-option>
                 <el-option label="Linux" value="Linux"></el-option>
               </el-select>
+            </el-form-item>
+            <el-form-item label="端口" prop="port" class="form-item">
+              <el-input v-model.number="serverForm.port" type="number" placeholder="请输入端口号"></el-input>
             </el-form-item>
           </div>
           <div class="form-row">
@@ -133,31 +136,21 @@
           <el-button type="primary" @click="submitForm">确 定</el-button>
         </div>
       </el-dialog>
-
-      <!-- SSH终端窗口 -->
-      <el-dialog title="SSH终端" :visible.sync="sshVisible" fullscreen>
-        <div id="terminal" class="terminal"></div>
-      </el-dialog>
     </div>
   </div>
 </template>
 
 <script>
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import io from 'socket.io-client';
-
 export default {
   data() {
     return {
       servers: [],
       dialogVisible: false,
-      sshVisible: false,
-      terminal: null,
       serverForm: {
         name: '',
         ip: '',
         type: 'Windows',
+        port: 22,
         username: '',
         password: ''
       },
@@ -165,6 +158,19 @@ export default {
         name: [{ required: true, message: '请输入服务器名称', trigger: 'blur' }],
         ip: [{ required: true, message: '请输入IP地址', trigger: 'blur' }],
         type: [{ required: true, message: '请选择服务器类型', trigger: 'change' }],
+        port: [
+          { required: true, message: '请输入端口号', trigger: 'blur' },
+          { type: 'number', message: '端口必须为数字', trigger: 'blur' },
+          { validator: (rule, value, callback) => {
+              if (value < 1 || value > 65535) {
+                callback(new Error('端口号必须在1-65535之间'));
+              } else {
+                callback();
+              }
+            }, 
+            trigger: 'blur' 
+          }
+        ],
         username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
         password: [{ 
           validator: (rule, value, callback) => {
@@ -215,6 +221,15 @@ export default {
   },
 
   methods: {
+    updateDefaultPort() {
+      // 根据服务器类型更新默认端口
+      if (this.serverForm.type === 'Windows') {
+        this.serverForm.port = 3389;
+      } else if (this.serverForm.type === 'Linux') {
+        this.serverForm.port = 22;
+      }
+    },
+    
     async loadServers() {
       // 如果未登录，不加载服务器列表
       if (!this.isLoggedIn) {
@@ -240,6 +255,7 @@ export default {
         name: '',
         ip: '',
         type: 'Windows',
+        port: 3389, // 默认为Windows RDP端口
         username: '',
         password: ''
       };
@@ -253,6 +269,7 @@ export default {
         name: server.name,
         ip: server.ip,
         type: server.type,
+        port: server.port || (server.type === 'Windows' ? 3389 : 22), // 根据类型设置默认端口
         username: server.username,
         password: '', // 编辑时密码为空
       };
@@ -355,54 +372,25 @@ export default {
         }
       } catch (error) {
         this.$message.error('连接失败：' + (error.response && error.response.data ? error.response.data.error : error.message));
-
       }
     },
 
     async connectSSH(server) {
-      this.sshVisible = true;
-      this.$nextTick(() => {
-        if (!this.terminal) {
-          this.terminal = new Terminal();
-          const fitAddon = new FitAddon();
-          this.terminal.loadAddon(fitAddon);
-          this.terminal.open(document.getElementById('terminal'));
-          fitAddon.fit();
-
-          // 获取服务器密码
-          this.axios.get(`/api/servers/${server.id}/password`).then(passwordResponse => {
-            const password = passwordResponse.data.password;
-
-            // 使用 Socket.IO 连接 SSH
-            const socket = io('http://localhost:5000');
-            socket.emit('connect_ssh', {
-              host: server.ip,
-              username: server.username,
-              password: password
-            });
-
-            socket.on('ssh_output', (data) => {
-              this.terminal.write(data.data);
-            });
-
-            socket.on('ssh_error', (data) => {
-              this.$message.error(data.error);
-              this.sshVisible = false;
-            });
-
-            socket.on('disconnect', () => {
-              this.sshVisible = false;
-            });
-
-            this.terminal.onData(data => {
-              socket.emit('ssh_input', data);
-            });
-          }).catch(error => {
-            this.$message.error('获取服务器密码失败');
-            this.sshVisible = false;
-          });
+      try {
+        // 通过后端API发起SSH连接请求
+        const response = await this.axios.post('/api/ssh/connect', {
+          server_id: server.id
+        });
+        
+        if (response.data.success) {
+          this.$message.success('SSH 连接请求已发送');
+        } else {
+          throw new Error(response.data.error || '启动SSH连接失败');
         }
-      });
+      } catch (error) {
+        console.error('SSH连接错误:', error);
+        this.$message.error('SSH连接失败：' + (error.response && error.response.data ? error.response.data.error : error.message));
+      }
     },
 
     handleNodeClick(data) {
@@ -428,9 +416,6 @@ export default {
     }
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
-    }
-    if (this.terminal) {
-      this.terminal.dispose();
     }
   }
 }

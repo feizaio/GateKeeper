@@ -69,11 +69,20 @@ def add_server():
         data = request.get_json()
         logging.info(f"添加服务器: {data}")
         
+        # 根据服务器类型设置默认端口
+        if 'port' not in data or data['port'] is None:
+            if data['type'] == 'Windows':
+                default_port = 3389  # Windows默认RDP端口
+            else:
+                default_port = 22    # Linux默认SSH端口
+            data['port'] = default_port
+        
         server = Server(
             name=data['name'],
             ip=data['ip'],
             type=data['type'],
             username=data['username'],
+            port=data['port'],  # 使用根据类型设置的端口
             category_id=data.get('category_id')  # 添加分类ID
         )
         server.set_password(data['password'])
@@ -86,6 +95,7 @@ def add_server():
             'name': server.name,
             'ip': server.ip,
             'type': server.type,
+            'port': server.port,  # 添加端口到返回结果
             'category_id': server.category_id,
             'category_name': server.category.name if server.category else None
         })
@@ -141,6 +151,16 @@ def update_server(server_id):
             server.type = data['type']
             server.username = data['username']
             
+            # 处理端口字段
+            if 'port' in data and data['port'] is not None:
+                server.port = data['port']
+            elif server.port is None or (data['type'] != server.type):
+                # 如果服务器类型改变或原先没有端口，根据新类型设置默认端口
+                if data['type'] == 'Windows':
+                    server.port = 3389  # Windows 默认RDP端口
+                else:
+                    server.port = 22    # Linux 默认SSH端口
+            
             # 如果提供了新密码，则更新密码
             if data.get('password'):
                 server.set_password(data['password'])
@@ -153,6 +173,7 @@ def update_server(server_id):
                 'name': server.name,
                 'ip': server.ip,
                 'type': server.type,
+                'port': server.port,  # 返回端口值
                 'username': server.username
             })
         except Exception as e:

@@ -7,7 +7,9 @@ Vue.use(Vuex)
 export default new Vuex.Store({
   state: {
     token: localStorage.getItem('token') || '',
-    user: JSON.parse(localStorage.getItem('user')) || null
+    user: JSON.parse(localStorage.getItem('user')) || null,
+    clientInfo: null,
+    clientDialogVisible: false
   },
   
   mutations: {
@@ -26,6 +28,14 @@ export default new Vuex.Store({
       state.user = null
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+    },
+    
+    SET_CLIENT_INFO(state, clientInfo) {
+      state.clientInfo = clientInfo
+    },
+    
+    SET_CLIENT_DIALOG_VISIBLE(state, visible) {
+      state.clientDialogVisible = visible
     }
   },
   

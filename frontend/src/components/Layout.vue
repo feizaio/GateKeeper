@@ -220,9 +220,17 @@ export default {
         // 直接使用服务器返回的状态
         this.clientConnected = response.data.is_connected;
         
+        // 保存客户端信息到store
+        if (response.data.is_connected && response.data.client_info) {
+          this.$store.commit('SET_CLIENT_INFO', response.data.client_info);
+        } else {
+          this.$store.commit('SET_CLIENT_INFO', null);
+        }
+        
         // 只有在未连接时才显示下载对话框
         if (!this.clientConnected && !this.showClientDialog) {
           this.showClientDialog = true;
+          this.$store.commit('SET_CLIENT_DIALOG_VISIBLE', true);
         }
         
         console.log('客户端状态:', {
@@ -234,6 +242,7 @@ export default {
       } catch (error) {
         console.error('检查客户端状态失败:', error);
         this.clientConnected = false;
+        this.$store.commit('SET_CLIENT_INFO', null);
       } finally {
         this.checkingStatus = false;
       }

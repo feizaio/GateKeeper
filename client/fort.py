@@ -317,6 +317,56 @@ class FortressClient:
             self.server.shutdown()
         os._exit(0)
 
+    def launch_ssh(self, host, username, password, port=22):
+        """使用Xshell URL Scheme启动SSH连接"""
+        try:
+            # Xshell路径
+            xshell_path = r'D:\xshell\Xshell\Xshell.exe'
+            
+            # 检查Xshell可执行文件是否存在
+            if not os.path.exists(xshell_path):
+                raise Exception(f"Xshell可执行文件不存在: {xshell_path}")
+                
+            # 构建连接URL (不包含密码的日志版本)
+            logging.info(f"准备启动SSH连接: {host}:{port}, 用户名: {username}")
+            
+            # 构建实际URL (包含凭据)
+            url = f"ssh://{username}:{password}@{host}:{port}/"
+            
+            # 尝试多种启动方式
+            try_methods = [
+                # 方式1: 直接使用URL作为参数
+                {"cmd": f'"{xshell_path}" {url}', "desc": "URL参数方式"},
+                # 方式2: 使用 -url 参数 (某些版本支持)
+                {"cmd": f'"{xshell_path}" -url {url}', "desc": "-url参数方式"},
+                # 方式3: 使用Xshell专用参数 (最可靠的方式)
+                {"cmd": f'"{xshell_path}" -newtab -protocol ssh -host {host} -port {port} -username {username} -password {password}', "desc": "Xshell专用参数方式"},
+                # 方式4: 使用Windows URL协议处理机制
+                {"cmd": f'start {url}', "desc": "Windows URL协议方式"}
+            ]
+            
+            success = False
+            last_error = None
+            
+            for method in try_methods:
+                try:
+                    logging.info(f"尝试使用{method['desc']}启动Xshell")
+                    subprocess.Popen(method["cmd"], shell=True)
+                    logging.info(f"使用{method['desc']}启动Xshell成功")
+                    success = True
+                    break
+                except Exception as e:
+                    logging.warning(f"{method['desc']}启动失败: {e}")
+                    last_error = e
+            
+            if not success:
+                raise Exception(f"所有启动方式均失败，最后错误: {last_error}")
+            
+            return True
+        except Exception as e:
+            logging.error(f"启动SSH连接失败: {e}")
+            return False
+
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -331,6 +381,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         """处理POST请求"""
         if self.path == '/rdp_connect':
             self._handle_rdp_connect()
+        elif self.path == '/ssh_connect':
+            self._handle_ssh_connect()
         else:
             self.send_error(404, "Not Found")
 
@@ -357,6 +409,26 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json_response({'success': success})
         except Exception as e:
             logging.error(f"处理RDP连接请求失败: {e}")
+            self._send_error(500, str(e))
+
+    def _handle_ssh_connect(self):
+        """处理SSH连接请求"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+
+            host = data.get('host')
+            username = data.get('username')
+            password = data.get('password')
+            port = data.get('port', 22)  # 默认SSH端口22
+
+            # 调起 Xshell
+            success = self.server.client.launch_ssh(host, username, password, port)
+
+            self._send_json_response({'success': success})
+        except Exception as e:
+            logging.error(f"处理SSH连接请求失败: {e}")
             self._send_error(500, str(e))
 
     def _send_json_response(self, data, code=200):

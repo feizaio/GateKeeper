@@ -7,6 +7,7 @@ from sqlalchemy import text
 import time
 from backend.models.server import Server
 from backend.models.user import User
+from backend.models.userlog import UserLog  # 修改导入路径
 from backend.extensions import db
 from datetime import datetime
 import win32gui
@@ -61,6 +62,21 @@ def monitor_rdp_window(server_id, user_id, app):
                         server = Server.query.get(server_id)
                         if server and server.in_use_by == user_id:
                             print(f"RDP window closed for server {server_id}, updating status")
+                            
+                            # 记录断开日志
+                            user = User.query.get(user_id)
+                            if user:
+                                log = UserLog(
+                                    user_id=user_id,
+                                    username=user.username,
+                                    action='disconnect',
+                                    server_id=server_id,
+                                    server_name=server.name,
+                                    server_ip=server.ip,
+                                    details=f"用户 {user.username} 断开RDP连接 {server.name}({server.ip})"
+                                )
+                                db.session.add(log)
+                            
                             server.in_use_by = None
                             server.last_active = None
                             db.session.commit()
@@ -79,11 +95,26 @@ def monitor_rdp_window(server_id, user_id, app):
             with app.app_context():
                 server = Server.query.get(server_id)
                 if server and server.in_use_by == user_id:
+                    # 记录断开日志
+                    user = User.query.get(user_id)
+                    if user:
+                        log = UserLog(
+                            user_id=user_id,
+                            username=user.username,
+                            action='disconnect',
+                            server_id=server_id,
+                            server_name=server.name,
+                            server_ip=server.ip,
+                            details=f"用户 {user.username} 断开RDP连接 {server.name}({server.ip})"
+                        )
+                        db.session.add(log)
+                        
                     server.in_use_by = None
                     server.last_active = None
                     db.session.commit()
         except Exception as e:
             print(f"Error cleaning up server status: {e}")
+
 def is_valid_ip(ip):
     """验证 IP 地址是否合法"""
     try:
@@ -134,6 +165,19 @@ def connect_rdp():
         # 更新服务器状态
         server.in_use_by = session.get('user_id')
         server.last_active = datetime.now()
+        
+        # 记录连接日志
+        log = UserLog(
+            user_id=g.current_user.id,
+            username=g.current_user.username,
+            action='connect',
+            server_id=server_id,
+            server_name=server.name,
+            server_ip=server.ip,
+            client_ip=client_ip,
+            details=f"用户 {g.current_user.username} 连接RDP服务器 {server.name}({server.ip})"
+        )
+        db.session.add(log)
         db.session.commit()
 
         # 发送RDP连接信息到客户端
@@ -171,6 +215,85 @@ def connect_rdp():
         
     except Exception as e:
         logging.error(f"处理RDP连接请求失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@remote_bp.route('/ssh/connect', methods=['POST'])
+def connect_ssh():
+    """处理SSH连接请求"""
+    try:
+        # 获取当前用户
+        if g.current_user is None:
+            logging.error("当前用户未登录，无法处理SSH连接请求")
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        # 获取客户端IP
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+        
+        logging.info(f"收到SSH连接请求，客户端IP: {client_ip}")
+        
+        data = request.get_json()
+        server_id = data.get('server_id')
+        
+        # 获取服务器信息
+        server = Server.query.get_or_404(server_id)
+        logging.info(f"目标服务器: {server.ip}")
+        if server.in_use_by and server.in_use_by != session.get('user_id'):
+            return jsonify({'error': 'Server is in use by another user'}), 409
+            
+        # 更新服务器状态
+        server.in_use_by = session.get('user_id')
+        server.last_active = datetime.now()
+        
+        # 记录连接日志
+        log = UserLog(
+            user_id=g.current_user.id,
+            username=g.current_user.username,
+            action='connect',
+            server_id=server_id,
+            server_name=server.name,
+            server_ip=server.ip,
+            client_ip=client_ip,
+            details=f"用户 {g.current_user.username} 连接SSH服务器 {server.name}({server.ip})"
+        )
+        db.session.add(log)
+        db.session.commit()
+
+        # 发送SSH连接信息到客户端
+        client_info = current_app.connected_clients.get(client_ip)
+        if not client_info:
+            return jsonify({'error': '客户端未连接', 'client_download_url': '/static/fortress_client.exe'}), 503
+            
+        logging.info(f"找到客户端信息: {client_info}")
+        
+        try:
+            client_url = f"http://{client_info['ip']}:{client_info['port']}/ssh_connect"
+            logging.info(f"准备发送SSH连接信息到客户端: {client_url}, 目标端口: {server.port or 22}")
+            
+            # 发送连接信息到客户端
+            response = requests.post(
+                client_url,
+                json={
+                    'host': server.ip,
+                    'username': server.username,
+                    'password': server.get_password(),
+                    'port': server.port or 22  # 使用服务器配置的端口或默认22端口
+                },
+                timeout=5
+            )
+            
+            if response.ok:
+                logging.info("SSH连接请求发送成功")
+                return jsonify({'success': True})
+            else:
+                logging.error(f"SSH连接请求失败: {response.status_code} - {response.text}")
+                return jsonify({'error': '启动SSH连接失败'}), 500
+                
+        except requests.exceptions.RequestException as e:
+            logging.error(f"连接客户端失败: {e}")
+            return jsonify({'error': '无法连接到客户端', 'client_download_url': '/static/fortress_client.exe'}), 503
+        
+    except Exception as e:
+        logging.error(f"处理SSH连接请求失败: {e}")
         return jsonify({'error': str(e)}), 500
 
 @remote_bp.route('/client/status', methods=['POST'])

@@ -4,7 +4,7 @@
       <div class="title">
         <h2>堡垒机管理系统</h2>
       </div>
-      <el-form :model="loginForm" :rules="rules" ref="loginForm" @submit.native.prevent="handleLogin">
+      <el-form :model="loginForm" :rules="rules" ref="loginForm" @submit.native.prevent>
         <el-form-item prop="username">
           <el-input 
             v-model="loginForm.username" 
@@ -23,9 +23,8 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" 
-                     native-type="submit" 
-                     style="width: 100%"
                      :loading="loading"
+                     style="width: 100%"
                      @click="handleLogin">
             {{ loading ? '登录中...' : '登录' }}
           </el-button>
@@ -42,6 +41,7 @@ export default {
   data() {
     return {
       loading: false,
+      isSubmitting: false, // 用于防止重复提交
       loginForm: {
         username: '',
         password: ''
@@ -60,28 +60,52 @@ export default {
   },
   methods: {
     async handleLogin() {
-      this.loading = true;  // 开始加载状态
-      try {
-        const response = await axios.post('/api/auth/login', this.loginForm);
-        localStorage.setItem('token', response.data.token);  // 存储token
-        this.$store.commit('SET_USER', response.data.user); // 更新用户状态
-        this.$message.success('登录成功');
-        console.log('跳转到首页')
-        this.$router.push('/');  // 登录成功后跳转到首页
-      } catch (error) {
-        console.error('登录失败:', error);
-        let errorMessage = '登录失败';
-        if (error.response) {
-          errorMessage = error.response.data.error || '服务器错误';
-        } else if (error.request) {
-          errorMessage = '网络错误，请检查网络连接';
-        } else {
-          errorMessage = error.message || '未知错误';
-        }
-        this.$message.error(errorMessage);
-      } finally {
-        this.loading = false;  // 结束加载状态
+      // 防止重复提交
+      if (this.loading || this.isSubmitting) {
+        console.log('登录请求正在处理中，请勿重复提交');
+        return;
       }
+      
+      // 表单验证
+      this.$refs.loginForm.validate(async valid => {
+        if (!valid) {
+          return false;
+        }
+        
+        this.loading = true;
+        this.isSubmitting = true; // 标记开始提交
+        
+        try {
+          const response = await axios.post('/api/auth/login', this.loginForm);
+          localStorage.setItem('token', response.data.token);  // 存储token
+          this.$store.commit('SET_USER', response.data);      // 更新用户状态
+          this.$message.success('登录成功');
+          console.log('跳转到首页');
+          
+          // 登录成功后延迟导航，避免导航过快导致问题
+          setTimeout(() => {
+            this.$router.push('/');  // 登录成功后跳转到首页
+          }, 100);
+          
+        } catch (error) {
+          console.error('登录失败:', error);
+          let errorMessage = '登录失败';
+          if (error.response) {
+            errorMessage = error.response.data.error || '服务器错误';
+          } else if (error.request) {
+            errorMessage = '网络错误，请检查网络连接';
+          } else {
+            errorMessage = error.message || '未知错误';
+          }
+          this.$message.error(errorMessage);
+        } finally {
+          // 延迟重置状态，避免快速点击仍然可能导致重复提交
+          setTimeout(() => {
+            this.loading = false;
+            this.isSubmitting = false; // 标记结束提交
+          }, 500);
+        }
+      });
     }
   }
 }

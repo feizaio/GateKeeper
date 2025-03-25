@@ -13,6 +13,7 @@ class Server(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     ip = db.Column(db.String(100), nullable=False)
+    port = db.Column(db.Integer, default=22)  # 添加端口字段，默认值为22
     type = db.Column(db.String(50), nullable=False)  # Windows/Linux
     username = db.Column(db.String(100), nullable=False)
     password = db.Column(db.String(500), nullable=False)

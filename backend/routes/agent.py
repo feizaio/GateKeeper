@@ -4,6 +4,7 @@ from backend.models.user import User
 from backend.extensions import db
 from datetime import datetime
 import urllib.parse
+from backend.models.userlog import UserLog
 
 agent_bp = Blueprint('agent', __name__)
 
@@ -30,6 +31,22 @@ def update_server_status():
                 
         else:
             if server.in_use_by:
+                # 记录断开日志
+                user = User.query.get(server.in_use_by)
+                if user:
+                    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+                    log = UserLog(
+                        user_id=user.id,
+                        username=user.username,
+                        action='disconnect',
+                        server_id=server.id,
+                        server_name=server.name,
+                        server_ip=server.ip,
+                        client_ip=client_ip,
+                        details=f"用户 {user.username} 断开{server.type}连接 {server.name}({server.ip}) [代理检测]"
+                    )
+                    db.session.add(log)
+                
                 server.in_use_by = None
                 server.last_active = None
                 

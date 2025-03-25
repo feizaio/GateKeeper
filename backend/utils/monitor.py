@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 from backend.extensions import db
 from backend.models import Server
+from backend.models.userlog import UserLog
+from backend.models.user import User
 from flask import current_app
 
 def check_port(host, port, timeout=3):
@@ -38,11 +40,39 @@ class ServerMonitor:
                             
                             if not is_alive:
                                 # 如果端口不可访问，说明连接已断开
+                                # 记录断开日志
+                                user = User.query.get(server.in_use_by)
+                                if user:
+                                    log = UserLog(
+                                        user_id=server.in_use_by,
+                                        username=user.username,
+                                        action='disconnect',
+                                        server_id=server.id,
+                                        server_name=server.name,
+                                        server_ip=server.ip,
+                                        details=f"用户 {user.username} 断开{server.type}连接 {server.name}({server.ip}) [监控自动检测]"
+                                    )
+                                    db.session.add(log)
+                                
                                 server.in_use_by = None
                                 server.last_active = None
                                 db.session.commit()
                             elif server.last_active and (datetime.now() - server.last_active).total_seconds() > 900:  # 15分钟
                                 # 如果超过15分钟没有心跳，释放服务器
+                                # 记录断开日志
+                                user = User.query.get(server.in_use_by)
+                                if user:
+                                    log = UserLog(
+                                        user_id=server.in_use_by,
+                                        username=user.username,
+                                        action='disconnect',
+                                        server_id=server.id,
+                                        server_name=server.name,
+                                        server_ip=server.ip,
+                                        details=f"用户 {user.username} 断开{server.type}连接 {server.name}({server.ip}) [超时自动断开]"
+                                    )
+                                    db.session.add(log)
+                                
                                 server.in_use_by = None
                                 server.last_active = None
                                 db.session.commit()

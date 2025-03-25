@@ -50,6 +50,7 @@ def create_app():
     socketio.init_app(app, cors_allowed_origins="*")
 
     from backend.models import User, Server
+    from backend.models.userlog import UserLog  # 添加UserLog模型导入
     
     # 注册蓝图
     from backend.routes.auth import auth_bp
@@ -89,6 +90,14 @@ def create_app():
 
     # 初始化数据库
     init_db()
+    
+    # 执行迁移脚本
+    try:
+        from backend.migrations.add_user_logs_table import migrate as migrate_user_logs
+        migrate_user_logs()
+        logging.info("用户日志表迁移完成")
+    except Exception as e:
+        logging.error(f"执行用户日志表迁移脚本时出错: {str(e)}")
 
     @app.teardown_appcontext
     def shutdown_session(exception=None):
