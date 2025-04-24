@@ -1,5 +1,5 @@
 <template>
-  <div class="layout">
+  <div class="layout" @mousemove="resetInactivityTimer" @click="checkAndResetTimer" @keydown="resetInactivityTimer">
     <el-container>
       <el-header height="50px">
         <div class="header-content">
@@ -109,17 +109,30 @@
       </div>
     </el-dialog>
 
-    <!-- 客户端下载提示对话框 -->
+    <!-- 添加客户端未连接弹窗 -->
     <el-dialog
-      title="需要安装客户端"
-      :visible.sync="showClientDialog"
-      width="400px">
-      <span>需要安装堡垒机客户端才能使用远程连接功能。</span>
+      title="客户端连接提示"
+      :visible.sync="clientNotConnectedDialogVisible"
+      width="360px"
+      :close-on-click-modal="false"
+      :show-close="false"
+      custom-class="client-not-connected-dialog">
+      <div class="client-dialog-content">
+        <div class="client-dialog-icon">
+          <i class="el-icon-warning-outline"></i>
+        </div>
+        <div class="client-dialog-message">
+          <p>检测到客户端未连接</p>
+          <ul>
+            <li>请确保已安装堡垒机客户端</li>
+            <li>如未安装，请点击下载并安装</li>
+            <li>如已安装，请点击启动客户端</li>
+          </ul>
+        </div>
+      </div>
       <div slot="footer" class="dialog-footer">
-        <el-button @click="showClientDialog = false">取消</el-button>
-        <el-button type="primary" @click="downloadClient">
-          下载客户端
-        </el-button>
+        <el-button @click="downloadClient" size="small">下载客户端</el-button>
+        <el-button type="primary" @click="startClient" size="small">启动客户端</el-button>
       </div>
     </el-dialog>
   </div>
@@ -142,9 +155,19 @@ export default {
 
     return {
       clientConnected: false,
+      clientStatus: null,
       checkingStatus: false,
       showClientDialog: false,
       passwordDialogVisible: false,
+      clientNotConnectedDialogVisible: false,
+      clientConfig: {
+        // 客户端协议，用于启动客户端应用
+        protocol: 'fort://',
+        // 客户端端口，用于检测客户端状态
+        port: 45654,
+        // 客户端下载文件名
+        fileName: 'GatekeeperSetup.exe'
+      },
       passwordForm: {
         oldPassword: '',
         newPassword: '',
@@ -162,17 +185,24 @@ export default {
           { required: true, message: '请再次输入新密码', trigger: 'blur' },
           { validator: validateConfirmPassword, trigger: 'blur' }
         ]
-      }
+      },
+      statusCheckController: null,
+      lastCheckTime: 0, // 添加上次检查时间记录
+      consecutiveFailures: 0, // 添加连续失败次数记录
+      dialogUpdateTimer: null // 弹窗状态更新定时器
     }
   },
   computed: {
     statusIcon() {
       if (this.checkingStatus) return 'el-icon-loading';
-      return this.clientConnected ? 'el-icon-success' : 'el-icon-error';
+      if (!this.clientStatus) return 'el-icon-error';
+      return this.clientStatus.server_connected ? 'el-icon-success' : 'el-icon-warning';
     },
     statusText() {
       if (this.checkingStatus) return '正在检查客户端状态...';
-      return this.clientConnected ? '客户端已连接' : '客户端未连接';
+      if (!this.clientStatus) return '客户端未连接';
+      if (!this.clientStatus.server_connected) return '堡垒机连接断开';
+      return '客户端已连接';
     },
     isLoggedIn() {
       return this.$store.state.user !== null;
@@ -185,6 +215,39 @@ export default {
     }
   },
   methods: {
+    // 添加更新弹窗显示状态的方法
+    updateDialogVisibility() {
+      console.log('更新弹窗状态，当前客户端状态:', this.statusIcon, '已连接:', this.clientConnected);
+      
+      // 如果状态图标是成功，强制关闭弹窗
+      if (this.statusIcon === 'el-icon-success') {
+        this.clientNotConnectedDialogVisible = false;
+        console.log('客户端已连接，关闭弹窗');
+      }
+      
+      // 如果客户端已连接，强制关闭弹窗
+      if (this.clientConnected) {
+        this.clientNotConnectedDialogVisible = false;
+        console.log('客户端已连接，关闭弹窗');
+      }
+    },
+    
+    // 重置不活动计时器
+    resetInactivityTimer() {
+      // 使用Vuex action重置计时器
+      this.$store.dispatch('resetInactivityTimer');
+    },
+    
+    // 检查客户端状态并重置计时器
+    checkAndResetTimer() {
+      this.resetInactivityTimer();
+      
+      // 如果最后一次检查是在3秒前，且当前未在检查中，则立即检查
+      const now = Date.now();
+      if (now - this.lastCheckTime > 3000 && !this.checkingStatus) {
+        this.checkClientStatus();
+      }
+    },
     async handleLogout() {
       try {
         // 调用注销接口
@@ -196,8 +259,10 @@ export default {
         this.stopStatusCheck();
         // 重置状态
         this.clientConnected = false;
+        this.clientStatus = null;
         this.checkingStatus = false;
         this.showClientDialog = false;
+        this.clientNotConnectedDialogVisible = false;
         // 跳转到登录页面
         this.$router.push('/login');
         this.$message.success('注销成功');
@@ -213,44 +278,167 @@ export default {
         return;
       }
       
+      // 检查是否处于冷却期（1秒内）且当前未在检查中
+      const now = Date.now();
+      if (now - this.lastCheckTime < 1000 && !this.checkingStatus) {
+        console.log('客户端状态检查过于频繁，忽略本次检查');
+        return;
+      }
+      
+      // 更新最后检查时间
+      this.lastCheckTime = now;
+      
       try {
+        // 设置正在检查状态
         this.checkingStatus = true;
-        const response = await axios.get('/api/client/status');
-        
-        // 直接使用服务器返回的状态
-        this.clientConnected = response.data.is_connected;
-        
-        // 保存客户端信息到store
-        if (response.data.is_connected && response.data.client_info) {
-          this.$store.commit('SET_CLIENT_INFO', response.data.client_info);
-        } else {
-          this.$store.commit('SET_CLIENT_INFO', null);
+
+        // 取消之前的请求（如果有）
+        if (this.statusCheckController) {
+          this.statusCheckController.abort();
         }
         
-        // 只有在未连接时才显示下载对话框
-        if (!this.clientConnected && !this.showClientDialog) {
-          this.showClientDialog = true;
-          this.$store.commit('SET_CLIENT_DIALOG_VISIBLE', true);
-        }
+        // 创建新的 AbortController
+        this.statusCheckController = new AbortController();
+        const timeout = setTimeout(() => this.statusCheckController.abort(), 1500);
         
-        console.log('客户端状态:', {
-          currentIp: response.data.current_ip,
-          isConnected: response.data.is_connected,
-          clients: response.data.clients
+        // 直接从本地客户端获取状态
+        const response = await fetch('http://127.0.0.1:45654/status', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          },
+          signal: this.statusCheckController.signal
         });
         
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+          const data = await response.json();
+          this.clientStatus = data;
+          const wasConnected = this.clientConnected;
+          this.clientConnected = data.status === 'running' && data.server_connected;
+          
+          // 保存客户端信息到store
+          this.$store.commit('SET_CLIENT_INFO', data);
+          
+          // 根据连接状态直接控制弹窗
+          this.clientNotConnectedDialogVisible = !this.clientConnected;
+          
+          // 如果连接成功，重置连续失败次数
+          if (this.clientConnected) {
+            this.consecutiveFailures = 0;
+            
+            // 强制根据客户端状态更新弹窗
+            this.updateDialogVisibility();
+            
+            // 如果之前未连接，现在连接成功，显示连接成功提示
+            if (!wasConnected) {
+              this.$notify({
+                title: '客户端已连接',
+                message: '堡垒机客户端连接成功',
+                type: 'success',
+                duration: 3000,
+                position: 'top-right'
+              });
+            }
+          } else {
+            // 即使请求成功，但如果客户端未真正连接，也计为失败
+            this.consecutiveFailures++;
+          }
+          
+          console.log('客户端状态:', data);
+        } else {
+          this.clientStatus = null;
+          this.clientConnected = false;
+          this.$store.commit('SET_CLIENT_INFO', null);
+          this.consecutiveFailures++;
+          this.clientNotConnectedDialogVisible = true;
+        }
       } catch (error) {
-        console.error('检查客户端状态失败:', error);
+        this.clientStatus = null;
         this.clientConnected = false;
         this.$store.commit('SET_CLIENT_INFO', null);
+        
+        if (error.name === 'AbortError') {
+          this.consecutiveFailures += 0.5;
+          console.log('检查客户端状态超时');
+        } else {
+          this.consecutiveFailures++;
+          console.error('检查客户端状态失败:', error);
+        }
+        
+        this.clientNotConnectedDialogVisible = true;
       } finally {
         this.checkingStatus = false;
+        this.statusCheckController = null;
+        
+        // 检查完成后，再次根据当前状态强制更新弹窗状态
+        this.$nextTick(() => {
+          this.updateDialogVisibility();
+        });
       }
     },
+    
+    // 在下面的方法中，增加立即检查状态的逻辑
     downloadClient() {
-      window.location.href = '/static/fortress_client.exe';
-      this.showClientDialog = false;
+      try {
+        // 使用静态的下载链接
+        const downloadUrl = '/static/GatekeeperSetup.exe';
+        console.log('尝试下载客户端，下载地址:', downloadUrl);
+        
+        // 显示提示
+        this.$message.success('开始下载客户端，请稍候...');
+        
+        // 使用a标签下载
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.setAttribute('download', 'GatekeeperSetup.exe');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 下载后显示提示
+        setTimeout(() => {
+          this.$confirm('如果下载没有自动开始，请联系管理员获取客户端安装包', '下载提示', {
+            confirmButtonText: '确定',
+            showCancelButton: false,
+            type: 'info'
+          });
+        }, 3000);
+      } catch (error) {
+        console.error('下载客户端出错:', error);
+        this.$message.error('下载失败，请联系管理员获取客户端安装包');
+      }
     },
+    
+    startClient() {
+      // 如果客户端已经连接，则不需要启动
+      if (this.clientConnected) {
+        this.$message.info('客户端已连接，无需重新启动');
+        return;
+      }
+      
+      // 显示正在尝试连接的消息
+      this.$message({
+        message: '正在尝试启动客户端...',
+        type: 'info',
+        duration: 3000
+      });
+      
+      // 使用注册的协议启动客户端
+      window.location.href = 'fort://start';
+      
+      // 设置一个短暂的延迟后再次检查客户端状态
+      setTimeout(() => {
+        console.log('启动客户端后重新检查状态');
+        this.checkClientStatus();
+      }, 3000);
+    },
+    
+    checkClientInstalled() {
+      this.clientInstalled = true;
+    },
+    
     startStatusCheck() {
       // 如果未登录，不启动检查
       if (!this.isLoggedIn) {
@@ -259,11 +447,14 @@ export default {
       
       // 如果已经有定时器在运行，先清除它
       this.stopStatusCheck();
+
+      // 初始化状态
+      this.clientNotConnectedDialogVisible = false;
       
-      // 更频繁地检查状态（每10秒一次）
+      // 更频繁地检查状态（每3秒一次）
       this.statusCheckInterval = setInterval(() => {
         this.checkClientStatus();
-      }, 10000);
+      }, 3000);
       
       // 立即执行一次检查
       this.checkClientStatus();
@@ -273,6 +464,15 @@ export default {
         clearInterval(this.statusCheckInterval);
         this.statusCheckInterval = null;
       }
+      
+      // 取消进行中的请求
+      if (this.statusCheckController) {
+        this.statusCheckController.abort();
+        this.statusCheckController = null;
+      }
+
+      // 重置状态
+      this.clientNotConnectedDialogVisible = false;
     },
     handleCommand(command) {
       switch (command) {
@@ -322,19 +522,58 @@ export default {
     isLoggedIn(newValue) {
       if (newValue) {
         this.startStatusCheck();
+        // 初始化不活动计时器
+        this.resetInactivityTimer();
       } else {
         this.stopStatusCheck();
+        // 确保弹窗关闭
+        this.clientNotConnectedDialogVisible = false;
       }
+    },
+    // 添加对状态图标的监听
+    statusIcon(newIcon) {
+      console.log('状态图标变化:', newIcon);
+      this.updateDialogVisibility();
+    },
+    // 监听客户端连接状态变化
+    clientConnected(newValue) {
+      console.log('客户端连接状态变化:', newValue);
+      this.updateDialogVisibility();
     }
   },
   mounted() {
+    // 初始化弹窗状态
+    this.clientNotConnectedDialogVisible = false;
+    
     // 只在登录状态下启动检查
     if (this.isLoggedIn) {
       this.startStatusCheck();
+      // 初始化不活动计时器
+      this.resetInactivityTimer();
+      
+      // 启动后主动检查一次状态并更新弹窗
+      this.$nextTick(() => {
+        this.updateDialogVisibility();
+      });
     }
+    
+    // 创建定时器，每秒检查一次弹窗状态
+    this.dialogUpdateTimer = setInterval(() => {
+      if (this.isLoggedIn) {
+        this.updateDialogVisibility();
+      }
+    }, 1000);
   },
   beforeDestroy() {
     this.stopStatusCheck();
+    // 确保组件销毁时关闭弹窗
+    this.clientNotConnectedDialogVisible = false;
+    
+    // 清除定时器
+    if (this.dialogUpdateTimer) {
+      clearInterval(this.dialogUpdateTimer);
+      this.dialogUpdateTimer = null;
+    }
   }
 }
 </script>
@@ -545,5 +784,145 @@ export default {
 .client-icon.el-icon-loading {
   color: #409EFF;
   text-shadow: 0 0 8px rgba(64, 158, 255, 0.3);
+}
+
+/* 客户端对话框样式 */
+.client-dialog-content {
+  display: flex;
+  padding: 10px;
+}
+
+.client-dialog-icon {
+  margin-right: 15px;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 5px;
+}
+
+.client-dialog-icon i {
+  font-size: 24px;
+  color: #E6A23C;
+  animation: pulse 2s infinite;
+}
+
+.client-dialog-message {
+  flex: 1;
+}
+
+.client-dialog-message p {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.client-dialog-message ol {
+  margin: 0;
+  padding-left: 20px;
+  color: #606266;
+}
+
+.client-dialog-message li {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 增加对话框中按钮的间距 */
+.dialog-footer .el-button {
+  margin-left: 10px;
+}
+
+/* 添加客户端未连接弹窗的样式 */
+.client-not-connected-dialog {
+  border-radius: 8px;
+}
+
+.client-not-connected-dialog /deep/ .el-dialog__header {
+  padding: 12px 20px 8px;
+  background-color: #f9f9f9;
+  border-bottom: 1px solid #eee;
+  border-radius: 8px 8px 0 0;
+}
+
+.client-not-connected-dialog /deep/ .el-dialog__title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+}
+
+.client-not-connected-dialog /deep/ .el-dialog__body {
+  padding: 12px 20px;
+}
+
+.client-not-connected-dialog /deep/ .el-dialog__footer {
+  padding: 8px 20px 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.client-not-connected-dialog .client-dialog-content {
+  display: flex;
+  padding: 0;
+}
+
+.client-not-connected-dialog .client-dialog-icon {
+  margin-right: 12px;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+}
+
+.client-not-connected-dialog .client-dialog-icon i {
+  font-size: 20px;
+  color: #E6A23C;
+}
+
+.client-not-connected-dialog .client-dialog-message {
+  flex: 1;
+}
+
+.client-not-connected-dialog .client-dialog-message p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.client-not-connected-dialog .client-dialog-message ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #606266;
+  list-style-type: disc;
+}
+
+.client-not-connected-dialog .client-dialog-message li {
+  margin-bottom: 4px;
+  line-height: 1.4;
+  font-size: 13px;
+  padding-left: 2px;
+}
+
+.client-not-connected-dialog .dialog-footer {
+  margin-top: 0;
+  text-align: right;
+}
+
+.client-not-connected-dialog .dialog-footer .el-button {
+  padding: 7px 15px;
+}
+
+.client-not-connected-dialog .dialog-footer .el-button + .el-button {
+  margin-left: 8px;
 }
 </style>

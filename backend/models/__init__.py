@@ -9,3 +9,4 @@ server_users = db.Table('server_users',
 # 导入模型类
 from backend.models.user import User
 from backend.models.server import Server
+from backend.models.client import Client

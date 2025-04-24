@@ -49,7 +49,7 @@ def create_app():
     db.init_app(app)
     socketio.init_app(app, cors_allowed_origins="*")
 
-    from backend.models import User, Server
+    from backend.models import User, Server, Client
     from backend.models.userlog import UserLog  # 添加UserLog模型导入
     
     # 注册蓝图

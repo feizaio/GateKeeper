@@ -15,6 +15,7 @@ import win32con
 import win32process
 import secrets
 import subprocess
+from backend.models.client import Client
 
 remote_bp = Blueprint('remote', __name__)
 rdp_processes = {}
@@ -324,6 +325,9 @@ def verify_client():
         client_ip = data.get('client_ip')
         client_port = data.get('client_port')
         version = data.get('version')
+        hostname = data.get('hostname')
+        os_version = data.get('os_version')
+        mac_address = data.get('mac_address')
         
         # 记录详细日志
         logging.info(f"收到客户端注册请求: IP={client_ip}, Port={client_port}, Version={version}")
@@ -348,11 +352,14 @@ def verify_client():
             logging.error(f"验证客户端连接失败: {e}")
             return jsonify({'error': 'Failed to verify client connection'}), 503
             
-        # 存储客户端信息
+        # 存储客户端信息到内存中
         client_info = {
             'ip': client_ip,
             'port': client_port,
             'version': version,
+            'hostname': hostname,
+            'os_version': os_version,
+            'mac_address': mac_address,
             'last_seen': datetime.now().isoformat()
         }
         
@@ -360,8 +367,39 @@ def verify_client():
             current_app.connected_clients = {}
             
         current_app.connected_clients[client_ip] = client_info
-        logging.info(f"客户端注册成功: {client_info}")
         
+        # 将客户端信息保存到数据库
+        try:
+            # 查找是否已存在相同IP的客户端记录
+            existing_client = Client.query.filter_by(ip=client_ip).first()
+            
+            if existing_client:
+                # 更新现有记录
+                existing_client.port = client_port
+                existing_client.version = version
+                existing_client.hostname = hostname
+                existing_client.os_version = os_version
+                existing_client.mac_address = mac_address
+                existing_client.last_seen = datetime.now()
+            else:
+                # 创建新记录
+                new_client = Client(
+                    ip=client_ip,
+                    port=client_port,
+                    version=version,
+                    hostname=hostname,
+                    os_version=os_version,
+                    mac_address=mac_address
+                )
+                db.session.add(new_client)
+                
+            db.session.commit()
+            logging.info(f"客户端信息已保存到数据库: {client_ip}:{client_port}")
+        except Exception as e:
+            logging.error(f"保存客户端信息到数据库失败: {e}")
+            # 继续执行，即使数据库保存失败也不影响客户端使用
+        
+        logging.info(f"客户端注册成功: {client_info}")
         return jsonify({'success': True})
         
     except Exception as e:

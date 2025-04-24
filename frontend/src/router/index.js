@@ -54,6 +54,12 @@ router.beforeEach((to, from, next) => {
   const user = store.state.user
   const isAdmin = user && user.is_admin
 
+  // 如果是登录状态，重置不活动计时器
+  if (isAuthenticated && store.state.inactivityTimer) {
+    clearTimeout(store.state.inactivityTimer);
+    store.dispatch('startInactivityTimer');
+  }
+
   if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
       next('/login')

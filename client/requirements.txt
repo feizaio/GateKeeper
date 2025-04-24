@@ -1,0 +1,9 @@
+pystray==0.19.5
+pillow==10.1.0
+requests==2.31.0
+pywin32==306
+pywinauto==0.6.8
+comtypes==1.2.0
+setuptools==68.0.0
+importlib-metadata==4.13.0
+pyinstaller==6.3.0 
