@@ -20,6 +20,8 @@ class Server(db.Model):
     in_use_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     last_active = db.Column(db.DateTime, nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
+    credential_id = db.Column(db.Integer, db.ForeignKey('credentials.id'), nullable=True)
+    remark = db.Column(db.String(255), nullable=True)  # 添加备注字段
     
     # 管理此服务器的用户 - 多对多
     managers = db.relationship(

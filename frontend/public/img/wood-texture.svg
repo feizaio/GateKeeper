@@ -1,0 +1,57 @@
+<svg width="800" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 添加光泽渐变效果 -->
+    <linearGradient id="wood-shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5ede3" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#e8d3b9" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#d4b795" stop-opacity="0.5"/>
+    </linearGradient>
+    
+    <!-- 添加边缘阴影效果 -->
+    <radialGradient id="edge-shadow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="80%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.3"/>
+    </radialGradient>
+    
+    <pattern id="wood-pattern" patternUnits="userSpaceOnUse" width="100" height="200" patternTransform="rotate(45)">
+      <rect width="100%" height="100%" fill="#e8d3b9"/>
+      
+      <!-- 木纹纹理 - 更加自然的波浪纹 -->
+      <path d="M0,10 C25,5 75,15 100,10" stroke="#d4b795" stroke-width="3" fill="none" opacity="0.6"/>
+      <path d="M0,30 C30,25 70,35 100,30" stroke="#d4b795" stroke-width="2" fill="none" opacity="0.5"/>
+      <path d="M0,50 C20,45 80,55 100,50" stroke="#d4b795" stroke-width="4" fill="none" opacity="0.4"/>
+      <path d="M0,70 C40,65 60,75 100,70" stroke="#d4b795" stroke-width="1" fill="none" opacity="0.7"/>
+      <path d="M0,90 C25,85 75,95 100,90" stroke="#d4b795" stroke-width="2" fill="none" opacity="0.6"/>
+      <path d="M0,110 C35,105 65,115 100,110" stroke="#d4b795" stroke-width="3" fill="none" opacity="0.5"/>
+      <path d="M0,130 C30,125 70,135 100,130" stroke="#d4b795" stroke-width="2" fill="none" opacity="0.4"/>
+      <path d="M0,150 C25,145 75,155 100,150" stroke="#d4b795" stroke-width="1" fill="none" opacity="0.8"/>
+      <path d="M0,170 C20,165 80,175 100,170" stroke="#d4b795" stroke-width="3" fill="none" opacity="0.5"/>
+      <path d="M0,190 C40,185 60,195 100,190" stroke="#d4b795" stroke-width="2" fill="none" opacity="0.6"/>
+      
+      <!-- 更细微的木纹细节 -->
+      <path d="M0,15 C20,14 80,16 100,15" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.3"/>
+      <path d="M0,35 C30,34 70,36 100,35" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.4"/>
+      <path d="M0,55 C25,54 75,56 100,55" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.3"/>
+      <path d="M0,75 C35,74 65,76 100,75" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.4"/>
+      <path d="M0,95 C20,94 80,96 100,95" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.3"/>
+      <path d="M0,115 C25,114 75,116 100,115" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.4"/>
+      <path d="M0,135 C30,134 70,136 100,135" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.3"/>
+      <path d="M0,155 C35,154 65,156 100,155" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.4"/>
+      <path d="M0,175 C20,174 80,176 100,175" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.3"/>
+      <path d="M0,195 C25,194 75,196 100,195" stroke="#e3c6a7" stroke-width="1" fill="none" opacity="0.4"/>
+      
+      <!-- 木结特效 -->
+      <ellipse cx="30" cy="70" rx="10" ry="5" fill="#d4b795" opacity="0.3" transform="rotate(45, 30, 70)"/>
+      <ellipse cx="70" cy="130" rx="12" ry="6" fill="#d4b795" opacity="0.2" transform="rotate(45, 70, 130)"/>
+    </pattern>
+  </defs>
+  
+  <!-- 应用木纹图案 -->
+  <rect width="100%" height="100%" fill="url(#wood-pattern)"/>
+  
+  <!-- 添加光泽层 -->
+  <rect width="100%" height="100%" fill="url(#wood-shine)" opacity="0.4"/>
+  
+  <!-- 添加边缘阴影 -->
+  <rect width="100%" height="100%" fill="url(#edge-shadow)"/>
+</svg> 

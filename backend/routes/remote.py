@@ -24,6 +24,13 @@ def monitor_rdp_window(server_id, user_id, app):
     """监控 RDP 窗口是否存在，如果窗口关闭则更新服务器状态"""
     time.sleep(2)  # 等待 mstsc 窗口创建
     
+    # 要搜索的服务器IP
+    server_ip = None
+    with app.app_context():
+        server = Server.query.get(server_id)
+        if server:
+            server_ip = server.ip
+    
     def find_rdp_window():
         """查找 RDP 窗口"""
         result = {'found': False}
@@ -31,27 +38,86 @@ def monitor_rdp_window(server_id, user_id, app):
         def callback(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 try:
+                    # 获取窗口标题和类名
                     title = win32gui.GetWindowText(hwnd)
-                    # 修改窗口标题匹配逻辑，包括更多可能的标题
-                    if ("远程桌面连接" in title or 
-                        "Remote Desktop Connection" in title or 
-                        "已连接到" in title or 
+                    class_name = win32gui.GetClassName(hwnd)
+                    
+                    # 通过类名检测RDP窗口 - 两种主要的RDP窗口类名
+                    rdp_class_found = (
+                        class_name == "TscShellContainerClass" or  # RDP连接后的窗口
+                        class_name == "TSSHELLWND" or             # 远程桌面窗口
+                        class_name == "TscAxRemoteDesktopHost"    # 嵌入式RDP控件
+                    )
+                    
+                    # 通过窗口标题检测RDP窗口（增加匹配条件）
+                    rdp_title_found = (
+                        "远程桌面连接" in title or
+                        "Remote Desktop Connection" in title or
+                        "已连接到" in title or
                         "Connected to" in title or
-                        "mstsc" in title.lower()):  # 添加 mstsc 检查
-                        rdp_processes[server_id] = hwnd
-                        result['found'] = True
-                        return False
-                except Exception:
-                    pass
+                        "mstsc" in title.lower() or
+                        (server_ip and server_ip in title)  # 标题中包含服务器IP
+                    )
+                    
+                    # RDP会话主窗口通常也会包含TscShell
+                    shell_found = (
+                        "TscShell" in class_name
+                    )
+                    
+                    if rdp_class_found or rdp_title_found or shell_found:
+                        # 尝试获取进程ID，确认是mstsc进程
+                        try:
+                            _, process_id = win32process.GetWindowThreadProcessId(hwnd)
+                            if process_id:
+                                # 检查进程名称，进一步确认是RDP进程
+                                import psutil
+                                try:
+                                    process = psutil.Process(process_id)
+                                    process_name = process.name().lower()
+                                    if "mstsc" in process_name or "rdpclip" in process_name:
+                                        logging.info(f"找到RDP窗口: {title}, 类名: {class_name}, 进程: {process_name}")
+                                        rdp_processes[server_id] = hwnd
+                                        result['found'] = True
+                                        return False
+                                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                                    pass
+                        except:
+                            # 如果无法获取进程ID，仍然通过窗口标题和类名判断
+                            if rdp_class_found or rdp_title_found:
+                                logging.info(f"找到可能的RDP窗口: {title}, 类名: {class_name}")
+                                rdp_processes[server_id] = hwnd
+                                result['found'] = True
+                                return False
+                except Exception as e:
+                    logging.error(f"检查窗口信息出错: {e}")
             return True
         
         try:
             win32gui.EnumWindows(callback, None)
         except Exception as e:
-            print(f"Error enumerating windows: {e}")
+            logging.error(f"枚举窗口时出错: {e}")
             
         return result['found']
 
+    # 记录连接信息，用于日志记录
+    connection_established = False
+    max_attempts = 30  # 最大等待30秒
+    
+    # 首先等待连接建立
+    for i in range(max_attempts):
+        window_found = find_rdp_window()
+        if window_found:
+            connection_established = True
+            logging.info(f"RDP连接已建立, 服务器ID: {server_id}")
+            break
+        time.sleep(1)
+    
+    # 如果未能建立连接，记录日志并退出
+    if not connection_established:
+        logging.warning(f"未检测到RDP窗口, 服务器ID: {server_id}")
+        return
+        
+    # 连接已建立，开始监控窗口关闭
     try:
         while True:
             window_found = find_rdp_window()
@@ -62,7 +128,7 @@ def monitor_rdp_window(server_id, user_id, app):
                     with app.app_context():
                         server = Server.query.get(server_id)
                         if server and server.in_use_by == user_id:
-                            print(f"RDP window closed for server {server_id}, updating status")
+                            logging.info(f"检测到RDP窗口关闭, 服务器ID: {server_id}, IP: {server.ip}")
                             
                             # 记录断开日志
                             user = User.query.get(user_id)
@@ -77,6 +143,31 @@ def monitor_rdp_window(server_id, user_id, app):
                                     details=f"用户 {user.username} 断开RDP连接 {server.name}({server.ip})"
                                 )
                                 db.session.add(log)
+                                
+                                # 尝试向客户端发送清理凭据的请求
+                                try:
+                                    # 查找客户端连接信息
+                                    client_ip = None
+                                    # 尝试从日志中找到最后登录的客户端IP
+                                    last_log = UserLog.query.filter_by(
+                                        server_id=server_id, 
+                                        action='connect'
+                                    ).order_by(UserLog.id.desc()).first()
+                                    
+                                    if last_log and last_log.client_ip:
+                                        client_ip = last_log.client_ip
+                                        client_info = app.connected_clients.get(client_ip)
+                                        if client_info:
+                                            client_url = f"http://{client_info['ip']}:{client_info['port']}/rdp_disconnect"
+                                            # 发送请求到客户端
+                                            requests.post(
+                                                client_url,
+                                                json={'host': server.ip},
+                                                timeout=2  # 短超时，不影响主流程
+                                            )
+                                except Exception as e:
+                                    # 忽略错误，不影响主流程
+                                    logging.error(f"清理凭据请求发送失败: {e}")
                             
                             server.in_use_by = None
                             server.last_active = None
@@ -84,12 +175,12 @@ def monitor_rdp_window(server_id, user_id, app):
                     del rdp_processes[server_id]
                     break
                 except Exception as e:
-                    print(f"Error updating server status: {e}")
+                    logging.error(f"更新服务器状态时出错: {e}")
                     break
             
             time.sleep(1)  # 每秒检查一次
     except Exception as e:
-        print(f"Monitor thread error: {e}")
+        logging.error(f"监控RDP窗口时出错: {e}")
     finally:
         # 确保清理状态
         try:
@@ -110,11 +201,35 @@ def monitor_rdp_window(server_id, user_id, app):
                         )
                         db.session.add(log)
                         
+                        # 尝试清理凭据
+                        try:
+                            # 查找客户端连接信息
+                            client_ip = None
+                            # 尝试从日志中找到最后登录的客户端IP
+                            last_log = UserLog.query.filter_by(
+                                server_id=server_id, 
+                                action='connect'
+                            ).order_by(UserLog.id.desc()).first()
+                            
+                            if last_log and last_log.client_ip:
+                                client_ip = last_log.client_ip
+                                client_info = app.connected_clients.get(client_ip)
+                                if client_info:
+                                    client_url = f"http://{client_info['ip']}:{client_info['port']}/rdp_disconnect"
+                                    # 发送请求到客户端
+                                    requests.post(
+                                        client_url,
+                                        json={'host': server.ip},
+                                        timeout=2  # 短超时，不影响主流程
+                                    )
+                        except Exception as e:
+                            logging.error(f"清理凭据失败: {e}")
+                        
                     server.in_use_by = None
                     server.last_active = None
                     db.session.commit()
         except Exception as e:
-            print(f"Error cleaning up server status: {e}")
+            logging.error(f"清理服务器状态时出错: {e}")
 
 def is_valid_ip(ip):
     """验证 IP 地址是否合法"""
@@ -153,6 +268,8 @@ def connect_rdp():
         
         data = request.get_json()
         server_id = data.get('server_id')
+        encrypted_password = data.get('password')
+        is_encrypted = data.get('is_encrypted', False)
         
         # 获取服务器信息
         server = Server.query.get_or_404(server_id)
@@ -184,7 +301,7 @@ def connect_rdp():
         # 发送RDP连接信息到客户端
         client_info = current_app.connected_clients.get(client_ip)
         if not client_info:
-            return jsonify({'error': '客户端未连接', 'client_download_url': '/static/fortress_client.exe'}), 503
+            return jsonify({'error': '客户端未连接', 'client_download_url': '/static/gatekeeperclient.exe'}), 503
             
         logging.info(f"找到客户端信息: {client_info}")
         
@@ -192,13 +309,29 @@ def connect_rdp():
             client_url = f"http://{client_info['ip']}:{client_info['port']}/rdp_connect"
             logging.info(f"准备发送RDP连接信息到客户端: {client_url}")
             
+            # 获取真实密码
+            password = None
+            if is_encrypted:
+                # 解密从前端传来的加密密码
+                import base64
+                from backend.utils.crypto import cipher_suite
+                try:
+                    encrypted = base64.b64decode(encrypted_password)
+                    password = cipher_suite.decrypt(encrypted).decode()
+                except Exception as e:
+                    logging.error(f"密码解密失败: {e}")
+                    return jsonify({'error': '密码解密失败'}), 500
+            else:
+                # 如果不是加密密码，则直接从服务器获取
+                password = server.get_password()
+            
             # 发送连接信息到客户端
             response = requests.post(
                 client_url,
                 json={
                     'host': server.ip,
                     'username': server.username,
-                    'password': server.get_password()
+                    'password': password
                 },
                 timeout=5
             )
@@ -234,6 +367,8 @@ def connect_ssh():
         
         data = request.get_json()
         server_id = data.get('server_id')
+        encrypted_password = data.get('password')
+        is_encrypted = data.get('is_encrypted', False)
         
         # 获取服务器信息
         server = Server.query.get_or_404(server_id)
@@ -258,26 +393,42 @@ def connect_ssh():
         )
         db.session.add(log)
         db.session.commit()
-
+        
         # 发送SSH连接信息到客户端
         client_info = current_app.connected_clients.get(client_ip)
         if not client_info:
-            return jsonify({'error': '客户端未连接', 'client_download_url': '/static/fortress_client.exe'}), 503
+            return jsonify({'error': '客户端未连接', 'client_download_url': '/static/gatekeeperclient.exe'}), 503
             
         logging.info(f"找到客户端信息: {client_info}")
         
         try:
             client_url = f"http://{client_info['ip']}:{client_info['port']}/ssh_connect"
-            logging.info(f"准备发送SSH连接信息到客户端: {client_url}, 目标端口: {server.port or 22}")
+            logging.info(f"准备发送SSH连接信息到客户端: {client_url}")
+            
+            # 获取真实密码
+            password = None
+            if is_encrypted:
+                # 解密从前端传来的加密密码
+                import base64
+                from backend.utils.crypto import cipher_suite
+                try:
+                    encrypted = base64.b64decode(encrypted_password)
+                    password = cipher_suite.decrypt(encrypted).decode()
+                except Exception as e:
+                    logging.error(f"密码解密失败: {e}")
+                    return jsonify({'error': '密码解密失败'}), 500
+            else:
+                # 如果不是加密密码，则直接从服务器获取
+                password = server.get_password()
             
             # 发送连接信息到客户端
             response = requests.post(
                 client_url,
                 json={
                     'host': server.ip,
+                    'port': server.port,
                     'username': server.username,
-                    'password': server.get_password(),
-                    'port': server.port or 22  # 使用服务器配置的端口或默认22端口
+                    'password': password
                 },
                 timeout=5
             )

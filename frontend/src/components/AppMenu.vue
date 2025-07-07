@@ -17,6 +17,14 @@
       <i class="el-icon-collection-tag"></i>
       <span>分类管理</span>
     </el-menu-item>
+    <el-menu-item index="/system/credentials" v-if="isAdmin">
+      <i class="el-icon-key"></i>
+      <span>凭据管理</span>
+    </el-menu-item>
+    <el-menu-item index="/system/audit-logs" v-if="isAdmin">
+      <i class="el-icon-document"></i>
+      <span>审计日志</span>
+    </el-menu-item>
     <!-- 添加注销按钮 -->
     <el-menu-item index="logout" @click="handleLogout">
       <i class="el-icon-switch-button"></i>
@@ -53,7 +61,7 @@ export default {
         await axios.post('/api/auth/logout');
         // 清除本地存储的 token 和用户信息
         localStorage.removeItem('token');
-        this.$store.commit('SET_USER', null);
+        this.$store.commit('clearUserInfo');
         // 跳转到登录页面
         this.$router.push('/login');
         this.$message.success('注销成功');

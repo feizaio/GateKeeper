@@ -60,6 +60,8 @@ def create_app():
     from backend.routes.agent import agent_bp
     from backend.routes.category import category_bp
     from backend.routes.server import server_bp
+    from backend.routes.credential import credential_bp
+    from backend.routes.dashboard import dashboard_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(servers_bp, url_prefix='/api')
@@ -68,9 +70,22 @@ def create_app():
     app.register_blueprint(agent_bp, url_prefix='/api')
     app.register_blueprint(category_bp, url_prefix='/api/categories')
     app.register_blueprint(server_bp, url_prefix='/api/servers')
+    app.register_blueprint(credential_bp, url_prefix='/api')
+    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
 
-    # 注册 before_request 钩子
-    #app.before_request(auth_bp.before_request)
+
+    # 全局认证中间件
+    @app.before_request
+    def global_auth_middleware():
+        from flask import session, g
+        from backend.models.user import User
+        
+        # 设置当前用户
+        user_id = session.get('user_id')
+        if user_id:
+            g.current_user = db.session.get(User, user_id)
+        else:
+            g.current_user = None
 
     # 创建数据库表
     with app.app_context():

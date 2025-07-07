@@ -5,6 +5,9 @@ import Login from '../components/Login.vue'
 import Layout from '../components/Layout.vue'
 import ServerList from '../components/ServerList.vue'
 import CategoryManagement from '../components/CategoryManagement.vue'
+import AuditLogs from '../components/AuditLogs.vue'
+import CredentialManagement from '../components/CredentialManagement.vue'
+import Dashboard from '../components/Dashboard.vue'
 import store from '../store'
 
 Vue.use(VueRouter)
@@ -27,6 +30,12 @@ const routes = [
         component: ServerList
       },
       {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: Dashboard,
+        meta: { requiresAuth: true, requiresAdmin: true }
+      },
+      {
         path: 'users',
         name: 'UserManagement',
         component: UserManagement,
@@ -36,6 +45,18 @@ const routes = [
         path: 'system/categories',
         name: 'CategoryManagement',
         component: CategoryManagement,
+        meta: { requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'system/audit-logs',
+        name: 'AuditLogs',
+        component: AuditLogs,
+        meta: { requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'system/credentials',
+        name: 'CredentialManagement',
+        component: CredentialManagement,
         meta: { requiresAuth: true, requiresAdmin: true }
       }
     ]

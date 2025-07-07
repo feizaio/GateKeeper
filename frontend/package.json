@@ -9,6 +9,7 @@
     },
     "dependencies": {
         "axios": "^0.21.1",
+        "echarts": "^5.4.3",
         "element-ui": "^2.15.13",
         "socket.io-client": "^4.8.1",
         "vue": "^2.6.11",

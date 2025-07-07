@@ -46,8 +46,8 @@ def get_servers():
             'ip': server.ip,
             'type': server.type,
             'username': server.username,
-            'category_id': server.category_id,  # 添加分类ID
-            'category_name': server.category.name if server.category else None,  # 添加分类名称
+            'category_id': server.category_id,
+            'category_name': server.category.name if server.category else None,
             'in_use': bool(server.in_use_by),
             'last_active': server.last_active.isoformat() if server.last_active else None,
             'in_use_by_me': server.in_use_by == g.current_user.id,
@@ -55,7 +55,8 @@ def get_servers():
                 '我' if server.in_use_by == g.current_user.id 
                 else (User.query.get(server.in_use_by).username if server.in_use_by 
                 else None)
-            )
+            ),
+            'remark': server.remark  # 确保包含remark字段
         } for server in servers])
     except Exception as e:
         logging.error(f"获取服务器列表失败: {str(e)}")
@@ -68,6 +69,7 @@ def add_server():
     try:
         data = request.get_json()
         logging.info(f"添加服务器: {data}")
+        logging.info(f"备注字段: {data.get('remark')}")  # 添加备注字段的日志
         
         # 根据服务器类型设置默认端口
         if 'port' not in data or data['port'] is None:
@@ -83,12 +85,15 @@ def add_server():
             type=data['type'],
             username=data['username'],
             port=data['port'],  # 使用根据类型设置的端口
-            category_id=data.get('category_id')  # 添加分类ID
+            category_id=data.get('category_id'),  # 添加分类ID
+            remark=data.get('remark')  # 添加备注字段
         )
+        logging.info(f"创建的服务器对象: name={server.name}, ip={server.ip}, remark={server.remark}")  # 添加服务器对象的日志
         server.set_password(data['password'])
         
         db.session.add(server)
         db.session.commit()
+        logging.info(f"服务器添加成功，ID: {server.id}, 备注: {server.remark}")  # 添加成功后的日志
         
         return jsonify({
             'id': server.id,
@@ -97,7 +102,8 @@ def add_server():
             'type': server.type,
             'port': server.port,  # 添加端口到返回结果
             'category_id': server.category_id,
-            'category_name': server.category.name if server.category else None
+            'category_name': server.category.name if server.category else None,
+            'remark': server.remark  # 添加备注字段
         })
     except Exception as e:
         logging.error(f"添加服务器失败: {str(e)}")
@@ -131,6 +137,7 @@ def update_server(server_id):
         server = Server.query.get_or_404(server_id)
         data = request.get_json()
         logging.info(f"更新数据: {data}")
+        logging.info(f"备注字段: {data.get('remark')}")  # 添加备注字段的日志
         
         # 检查是否有权限更新
         if not g.current_user.is_admin:
@@ -165,8 +172,12 @@ def update_server(server_id):
             if data.get('password'):
                 server.set_password(data['password'])
             
+            # 更新备注字段
+            server.remark = data.get('remark')
+            logging.info(f"更新备注字段: {data['remark']}")  # 添加更新备注字段的日志
+            
             db.session.commit()
-            logging.info(f"服务器 {server_id} 更新成功")
+            logging.info(f"服务器 {server_id} 更新成功，备注: {server.remark}")  # 添加更新成功后的日志
             
             return jsonify({
                 'id': server.id,
@@ -174,7 +185,8 @@ def update_server(server_id):
                 'ip': server.ip,
                 'type': server.type,
                 'port': server.port,  # 返回端口值
-                'username': server.username
+                'username': server.username,
+                'remark': server.remark  # 返回备注字段
             })
         except Exception as e:
             logging.error(f"数据库更新失败: {str(e)}")

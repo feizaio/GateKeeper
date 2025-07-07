@@ -16,6 +16,7 @@ axios.defaults.withCredentials = true  // 添加这行，允许跨域请求携�
 // 设置全局请求拦截器
 axios.interceptors.request.use(
   config => {
+    // 每次请求前都从 localStorage 获取最新的 token
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -45,6 +46,7 @@ axios.interceptors.response.use(
 );
 
 // 将 axios 挂载到 Vue 原型上，方便全局调用
+Vue.prototype.$http = axios;
 Vue.prototype.axios = axios;
 
 new Vue({

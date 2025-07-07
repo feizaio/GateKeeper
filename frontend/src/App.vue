@@ -25,33 +25,57 @@ export default {
     }
   },
   async created() {
-    try {
-      const response = await axios.get('/api/auth/check');
-      this.$store.commit('setUser', response.data);
-      // 如果登录状态有效，初始化自动登出计时器
-      this.$store.dispatch('startInactivityTimer');
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      this.$router.push('/login'); // 重定向到登录页
-    } finally {
-      this.isLoading = false;
+    // 首先检查localStorage中是否有token
+    const token = localStorage.getItem('token');
+    
+    if (token) {
+      // 设置axios请求头
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      try {
+        // 验证token有效性
+        const response = await axios.get('/api/auth/check');
+        // 更新用户状态
+        this.$store.commit('setUser', response.data);
+        // 如果登录状态有效，初始化自动登出计时器
+        this.$store.dispatch('startInactivityTimer');
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        // 清除无效的token
+        localStorage.removeItem('token');
+        this.$store.commit('clearUserInfo');
+        this.$router.push('/login');
+      }
+    } else {
+      // 没有token，直接跳转到登录页
+      if (this.$router.currentRoute.path !== '/login') {
+        this.$router.push('/login');
+      }
     }
+    
+    // 完成加载
+    this.isLoading = false;
   }
 }
 </script>
 
 <style>
-#app {
-  height: 100vh;
+html, body {
   margin: 0;
   padding: 0;
-}
-
-body {
-  margin: 0;
-  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
   font-family: Arial, sans-serif;
   background-color: #f5f5f5;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .loading {

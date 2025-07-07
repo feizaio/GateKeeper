@@ -10,3 +10,4 @@ server_users = db.Table('server_users',
 from backend.models.user import User
 from backend.models.server import Server
 from backend.models.client import Client
+from backend.models.credential import Credential

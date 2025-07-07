@@ -39,6 +39,10 @@
             :default-active="$route.path"
             class="el-menu-vertical"
             router>
+            <el-menu-item index="/dashboard" v-if="isAdmin">
+              <i class="el-icon-data-analysis"></i>
+              <span>仪表盘</span>
+            </el-menu-item>
             <el-menu-item index="/">
               <i class="el-icon-monitor"></i>
               <span>服务器管理</span>
@@ -57,11 +61,19 @@
                 <i class="el-icon-collection-tag"></i>
                 <span>分类管理</span>
               </el-menu-item>
+              <el-menu-item index="/system/credentials" v-if="isAdmin">
+                <i class="el-icon-key"></i>
+                <span>凭据管理</span>
+              </el-menu-item>
+              <el-menu-item index="/system/audit-logs" v-if="isAdmin">
+                <i class="el-icon-document"></i>
+                <span>审计日志</span>
+              </el-menu-item>
             </el-submenu>
           </el-menu>
         </el-aside>
         
-        <el-main>
+        <el-main class="main-content">
           <router-view></router-view>
         </el-main>
       </el-container>
@@ -254,7 +266,7 @@ export default {
         await axios.post('/api/auth/logout');
         // 清除本地存储的 token 和用户信息
         localStorage.removeItem('token');
-        this.$store.commit('SET_USER', null);
+        this.$store.commit('clearUserInfo');
         // 停止状态检查
         this.stopStatusCheck();
         // 重置状态
@@ -816,15 +828,15 @@ export default {
   color: #303133;
 }
 
-.client-dialog-message ol {
+.client-dialog-message ul {
   margin: 0;
   padding-left: 20px;
   color: #606266;
 }
 
-.client-dialog-message li {
+.client-dialog-message ul li {
   margin-bottom: 8px;
-  line-height: 1.5;
+  list-style-type: none;
 }
 
 @keyframes pulse {
@@ -924,5 +936,11 @@ export default {
 
 .client-not-connected-dialog .dialog-footer .el-button + .el-button {
   margin-left: 8px;
+}
+
+.main-content {
+  height: calc(100vh - 50px);
+  overflow-y: auto;
+  padding: 20px;
 }
 </style>

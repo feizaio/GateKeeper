@@ -5,6 +5,9 @@ from backend.extensions import db
 from functools import wraps
 from datetime import datetime, timedelta
 from backend.models.userlog import UserLog
+import time
+import base64
+from backend.utils.crypto import cipher_suite
 
 servers_bp = Blueprint('servers', __name__)
 
@@ -71,7 +74,8 @@ def get_servers():
             '我' if server.in_use_by == user.id 
             else (User.query.get(server.in_use_by).username if server.in_use_by 
             else None)
-        )
+        ),
+        'remark': server.remark
     } for server in servers])
 
 @servers_bp.route('/servers/<int:server_id>/status', methods=['POST'])
@@ -140,30 +144,66 @@ def get_server_password(server_id):
     password = server.get_password()
     if password is None:
         return jsonify({'error': 'Password not available'}), 404
-    return jsonify({'password': password})
+        
+    # 使用当前用户的ID和时间戳作为临时加密密钥
+    temp_key = f"{user.id}_{int(time.time())}"
+    session['temp_password_key'] = temp_key
+    
+    # 加密密码
+    encrypted = cipher_suite.encrypt(password.encode())
+    encrypted_password = base64.b64encode(encrypted).decode()
+    
+    return jsonify({'password': encrypted_password, 'encrypted': True})
 
 @servers_bp.route('/servers', methods=['POST'])
 @admin_required
 def add_server():
     data = request.get_json()
     
-    # 验证必需的字段
-    required_fields = ['name', 'ip', 'type', 'username', 'password']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'error': f'Missing required field: {field}'}), 400
-            
-    # 验证系统类型
-    if data['type'] not in ['Windows', 'Linux']:
+    # 基本字段验证
+    if 'name' not in data or not data['name']:
+        return jsonify({'error': 'Missing required field: name'}), 400
+    
+    if 'ip' not in data or not data['ip']:
+        return jsonify({'error': 'Missing required field: ip'}), 400
+    
+    if 'type' not in data or data['type'] not in ['Windows', 'Linux']:
         return jsonify({'error': 'Invalid system type. Must be either Windows or Linux'}), 400
     
+    # 创建服务器对象
     server = Server(
         name=data['name'],
         ip=data['ip'],
         type=data['type'],
-        username=data['username']
+        port=data.get('port', 22 if data['type'] == 'Linux' else 3389),
+        remark=data.get('remark')
     )
-    server.set_password(data['password'])
+    
+    # 设置分类
+    if 'category_id' in data and data['category_id']:
+        server.category_id = data['category_id']
+    
+    # 处理凭据
+    if 'credential_id' in data and data['credential_id']:
+        # 使用预设凭据
+        from backend.models.credential import Credential
+        credential = Credential.query.get(data['credential_id'])
+        if not credential:
+            return jsonify({'error': 'Invalid credential ID'}), 400
+        
+        server.credential_id = credential.id
+        server.username = credential.username
+        server.set_password(credential.get_password())
+    else:
+        # 使用传入的用户名和密码
+        if 'username' not in data or not data['username']:
+            return jsonify({'error': 'Missing required field: username'}), 400
+        
+        if 'password' not in data or not data['password']:
+            return jsonify({'error': 'Missing required field: password'}), 400
+        
+        server.username = data['username']
+        server.set_password(data['password'])
     
     try:
         db.session.add(server)
@@ -179,4 +219,60 @@ def delete_server(server_id):
     server = Server.query.get_or_404(server_id)
     db.session.delete(server)
     db.session.commit()
-    return jsonify({'message': 'Server deleted successfully'}) 
+    return jsonify({'message': 'Server deleted successfully'})
+
+@servers_bp.route('/servers/<int:server_id>', methods=['PUT'])
+@admin_required
+def update_server(server_id):
+    server = Server.query.get_or_404(server_id)
+    data = request.get_json()
+    
+    # 更新基本信息
+    if 'name' in data:
+        server.name = data['name']
+    if 'ip' in data:
+        server.ip = data['ip']
+    if 'port' in data:
+        server.port = data['port']
+    if 'type' in data and data['type'] in ['Windows', 'Linux']:
+        server.type = data['type']
+    if 'category_id' in data:
+        server.category_id = data['category_id'] if data['category_id'] else None
+    if 'remark' in data:
+        server.remark = data['remark']
+    
+    # 处理凭据更新
+    if 'credential_id' in data:
+        if data['credential_id']:
+            # 更新为新的预设凭据
+            from backend.models.credential import Credential
+            credential = Credential.query.get(data['credential_id'])
+            if not credential:
+                return jsonify({'error': 'Invalid credential ID'}), 400
+            
+            server.credential_id = credential.id
+            server.username = credential.username
+            server.set_password(credential.get_password())
+        else:
+            # 清除凭据关联，使用传入的用户名和密码
+            server.credential_id = None
+            
+            if 'username' in data:
+                server.username = data['username']
+            
+            if 'password' in data and data['password']:
+                server.set_password(data['password'])
+    else:
+        # 不修改凭据关联，但可能更新用户名密码
+        if 'username' in data:
+            server.username = data['username']
+        
+        if 'password' in data and data['password']:
+            server.set_password(data['password'])
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Server updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500 

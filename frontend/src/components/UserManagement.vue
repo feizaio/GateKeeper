@@ -59,17 +59,22 @@
     </el-dialog>
 
     <!-- 服务器授权对话框 -->
-    <el-dialog title="服务器授权" :visible.sync="serverAuthDialogVisible">
+    <el-dialog title="服务器授权" :visible.sync="serverAuthDialogVisible" width="900px" class="server-auth-dialog">
+      <div class="server-transfer-container">
       <el-transfer
         v-model="selectedServers"
         :data="allServers"
         :titles="['未授权服务器', '已授权服务器']"
+          filterable
+          filter-placeholder="请输入服务器名称"
         :props="{
           key: 'id',
-          label: 'name'
+            label: 'displayName'
         }"
+          class="server-transfer"
       ></el-transfer>
-      <div slot="footer">
+      </div>
+      <div slot="footer" class="dialog-footer">
         <el-button @click="serverAuthDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleServerAuth">确定</el-button>
       </div>
@@ -126,7 +131,14 @@ export default {
     async loadServers() {
       try {
         const response = await axios.get('/api/servers');
-        this.allServers = response.data;
+        this.allServers = response.data.map(server => ({
+          id: server.id,
+          name: server.name,
+          ip: server.ip,
+          type: server.type,
+          username: server.username,
+          displayName: `${server.name} (${server.ip})`
+        }));
       } catch (error) {
         this.$message.error('获取服务器列表失败');
       }
@@ -228,7 +240,66 @@ export default {
   margin-bottom: 20px;
 }
 
-.el-transfer {
-  margin: 20px 0;
+.server-auth-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.server-transfer-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+}
+
+.server-transfer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.server-transfer :deep(.el-transfer-panel) {
+  width: 380px;
+  margin: 0;
+}
+
+.server-transfer :deep(.el-transfer-panel__header) {
+  padding: 8px 15px;
+  background: #f5f7fa;
+}
+
+.server-transfer :deep(.el-transfer-panel__body) {
+  height: 400px;
+}
+
+.server-transfer :deep(.el-transfer-panel__list) {
+  height: 340px;
+}
+
+.server-transfer :deep(.el-transfer-panel__item) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 15px;
+  height: 32px;
+  line-height: 32px;
+}
+
+.server-transfer :deep(.el-transfer__buttons) {
+  padding: 0 30px;
+}
+
+.server-transfer :deep(.el-transfer__button) {
+  display: block;
+  margin: 5px 0;
+  padding: 10px;
+}
+
+.server-transfer :deep(.el-checkbox__label) {
+  font-size: 14px;
+}
+
+.dialog-footer {
+  text-align: right;
+  padding-top: 20px;
 }
 </style> 

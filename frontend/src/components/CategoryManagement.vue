@@ -72,6 +72,7 @@
       custom-class="server-dialog">
       <div class="server-list-container">
         <el-table 
+          ref="serverTable"
           :data="allServers" 
           style="width: 100%"
           @selection-change="handleSelectionChange">
@@ -188,10 +189,23 @@ export default {
       this.currentCategory = category;
       this.serverDialogVisible = true;
       await this.loadAllServers();
-      // 设置已选中的服务器
-      this.selectedServers = this.allServers.filter(server => 
+      
+      // 获取属于当前分类的服务器
+      const categoryServers = this.allServers.filter(server => 
         server.category_id === category.id
       );
+      this.selectedServers = categoryServers;
+      
+      // 使用$nextTick确保表格已渲染
+      this.$nextTick(() => {
+        // 先清除所有选中状态
+        this.$refs.serverTable.clearSelection();
+        
+        // 然后为每个属于当前分类的服务器设置选中状态
+        categoryServers.forEach(server => {
+          this.$refs.serverTable.toggleRowSelection(server, true);
+        });
+      });
     },
     handleSelectionChange(selection) {
       this.selectedServers = selection;

@@ -5,7 +5,7 @@ from .extensions import db
 from .models import server_users  # 导入关联表
 from .models.user import User
 from .models.server import Server
-from config import Config
+from .config import Config  # 修改为从当前包导入Config
 
 from .routes.server import server_bp
 from .routes.auth import auth_bp
