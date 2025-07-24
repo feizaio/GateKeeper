@@ -9,6 +9,7 @@ import psutil
 import logging
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import inspect
+from datetime import datetime, timedelta
 
 # 将项目根目录添加到 sys.path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -62,6 +63,9 @@ def create_app():
     from backend.routes.server import server_bp
     from backend.routes.credential import credential_bp
     from backend.routes.dashboard import dashboard_bp
+    from backend.routes.service import service_bp
+    from backend.routes.task import task_bp
+    from backend.routes.task_view import task_view_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(servers_bp, url_prefix='/api')
@@ -72,61 +76,29 @@ def create_app():
     app.register_blueprint(server_bp, url_prefix='/api/servers')
     app.register_blueprint(credential_bp, url_prefix='/api')
     app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+    app.register_blueprint(service_bp, url_prefix='/api')
+    app.register_blueprint(task_bp, url_prefix='/api')
+    app.register_blueprint(task_view_bp, url_prefix='/api')
 
-
-    # 全局认证中间件
+    # 注册请求前处理函数
     @app.before_request
-    def global_auth_middleware():
-        from flask import session, g
-        from backend.models.user import User
-        
-        # 设置当前用户
-        user_id = session.get('user_id')
-        if user_id:
-            g.current_user = db.session.get(User, user_id)
+    def before_request():
+        # 设置全局用户对象
+        from flask import g, session
+        if 'user_id' in session:
+            g.current_user = User.query.get(session['user_id'])
         else:
             g.current_user = None
 
-    # 创建数据库表
-    with app.app_context():
-        # 只创建不存在的表，不删除现有表
-        db.create_all()
-        
-        # 创建初始管理员账号（如果不存在）
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            admin = User(username='admin', is_admin=True)
-            admin.set_password('admin')
-            db.session.add(admin)
-            db.session.commit()
-
-    # 初始化客户端连接存储
-    app.connected_clients = {}
-
-    # 初始化数据库
-    init_db()
-    
-    # 执行迁移脚本
-    try:
-        from backend.migrations.add_user_logs_table import migrate as migrate_user_logs
-        migrate_user_logs()
-        logging.info("用户日志表迁移完成")
-    except Exception as e:
-        logging.error(f"执行用户日志表迁移脚本时出错: {str(e)}")
-
+    # 注册请求后处理函数
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         db_session.remove()
 
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def catch_all(path):
-        return app.send_static_file('index.html')
-
+    # 全局错误处理
     @app.errorhandler(Exception)
     def handle_exception(e):
-        """全局错误处理"""
-        logging.error(f"发生错误: {str(e)}")
+        app.logger.error(f"发生错误: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     return app

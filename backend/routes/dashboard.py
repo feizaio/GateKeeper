@@ -27,7 +27,8 @@ def get_dashboard_stats():
     today_end = datetime.combine(today, datetime.max.time())
     
     today_activities = UserLog.query.filter(
-        UserLog.created_at.between(today_start, today_end)
+        UserLog.created_at.between(today_start, today_end),
+        UserLog.action == 'connect'
     ).count()
     
     # 获取告警数量（示例：过去24小时内的失败登录尝试）

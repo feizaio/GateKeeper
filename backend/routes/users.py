@@ -151,6 +151,16 @@ def update_user_servers(user_id):
     
     return jsonify({'message': 'User servers updated successfully'})
 
+@users_bp.route('/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    """获取单个用户信息"""
+    user = User.query.get_or_404(user_id)
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'is_admin': user.is_admin
+    })
+
 @users_bp.route('/users/current', methods=['GET'])
 def get_current_user_info():
     """获取当前用户信息"""

@@ -47,13 +47,20 @@
               <i class="el-icon-monitor"></i>
               <span>服务器管理</span>
             </el-menu-item>
-            
-            <el-submenu index="2">
+            <el-menu-item index="/system/service-manager" v-if="canManageServices">
+              <i class="el-icon-s-operation"></i>
+              <span>服务管理</span>
+            </el-menu-item>
+            <el-menu-item index="/system/task-manager">
+              <i class="el-icon-timer"></i>
+              <span>任务管理</span>
+            </el-menu-item>
+            <el-submenu index="2" v-if="isAdmin">
               <template slot="title">
                 <i class="el-icon-setting"></i>
                 <span>系统设置</span>
               </template>
-              <el-menu-item index="/users">
+              <el-menu-item index="/users" v-if="isAdmin">
                 <i class="el-icon-user"></i>
                 <span>用户管理</span>
               </el-menu-item>
@@ -224,6 +231,9 @@ export default {
     },
     currentUser() {
       return this.$store.state.user || { username: '' };
+    },
+    canManageServices() {
+      return this.isLoggedIn && (this.isAdmin || this.$store.state.user.can_manage_services);
     }
   },
   methods: {

@@ -89,10 +89,14 @@ def login():
             db.session.add(log)
             db.session.commit()
             
+            # 判断用户是否有服务管理权限
+            can_manage_services = user.can_manage_services()
+            
             return jsonify({
                 'id': user.id,
                 'username': user.username,
-                'is_admin': user.is_admin
+                'is_admin': user.is_admin,
+                'can_manage_services': can_manage_services
             })
         
         return jsonify({'error': 'Invalid username or password'}), 401
@@ -130,10 +134,14 @@ def check_auth():
     if user_id:
         user = User.query.get(user_id)
         if user:
+            # 判断用户是否有服务管理权限
+            can_manage_services = user.can_manage_services()
+            
             return jsonify({
                 'id': user.id,
                 'username': user.username,
-                'is_admin': user.is_admin
+                'is_admin': user.is_admin,
+                'can_manage_services': can_manage_services
             })
     return jsonify({'error': 'Not logged in'}), 401
 

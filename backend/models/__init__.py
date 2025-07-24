@@ -11,3 +11,6 @@ from backend.models.user import User
 from backend.models.server import Server
 from backend.models.client import Client
 from backend.models.credential import Credential
+from backend.models.category import Category
+from backend.models.userlog import UserLog
+from backend.models.service import Service

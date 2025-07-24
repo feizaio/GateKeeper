@@ -13,18 +13,38 @@
       <i class="el-icon-user"></i>
       <span>用户管理</span>
     </el-menu-item>
+    <el-menu-item-group title="系统管理">
     <el-menu-item index="/system/categories" v-if="isAdmin">
       <i class="el-icon-collection-tag"></i>
-      <span>分类管理</span>
+        <span slot="title">分类管理</span>
     </el-menu-item>
     <el-menu-item index="/system/credentials" v-if="isAdmin">
       <i class="el-icon-key"></i>
-      <span>凭据管理</span>
-    </el-menu-item>
+        <span slot="title">凭据管理</span>
+      </el-menu-item>
+      <el-menu-item index="/system/service-manager">
+        <i class="el-icon-link"></i>
+        <span slot="title">服务管理</span>
+      </el-menu-item>
+      <el-submenu index="tasks">
+        <template slot="title">
+          <i class="el-icon-timer"></i>
+          <span>任务管理</span>
+        </template>
+        <el-menu-item index="/system/task-manager">
+          <i class="el-icon-tickets"></i>
+          <span>任务列表</span>
+        </el-menu-item>
+        <el-menu-item index="/system/task-views">
+          <i class="el-icon-s-operation"></i>
+          <span>任务视图</span>
+        </el-menu-item>
+      </el-submenu>
     <el-menu-item index="/system/audit-logs" v-if="isAdmin">
       <i class="el-icon-document"></i>
-      <span>审计日志</span>
+        <span slot="title">审计日志</span>
     </el-menu-item>
+    </el-menu-item-group>
     <!-- 添加注销按钮 -->
     <el-menu-item index="logout" @click="handleLogout">
       <i class="el-icon-switch-button"></i>
